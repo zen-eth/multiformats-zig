@@ -3,7 +3,9 @@ This is the zig implementation of the multiformats [spec](https://github.com/mul
 
 ## Build
 ```bash
-zig build
+git clone --recurse-submodules git@github.com:optimism-java/multiformats-zig.git
+cd multiformats-zig
+zig build test --summary all
 ```
 
 ## Generate the code
