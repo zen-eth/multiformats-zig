@@ -17,7 +17,7 @@ pub fn Multihash(comptime S: usize) type {
             }
 
             var digest = [_]u8{0} ** S;
-            @memcpy(digest[0..input_digest.len], input_digest[0..input_digest.len]);  // Specify exact length
+            @memcpy(digest[0..input_digest.len], input_digest[0..input_digest.len]); // Specify exact length
 
             return Self{
                 .code = code,
@@ -25,7 +25,6 @@ pub fn Multihash(comptime S: usize) type {
                 .digest = digest,
             };
         }
-
 
         pub fn getCode(self: Self) Multicodec {
             return self.code;
@@ -61,7 +60,6 @@ pub fn Multihash(comptime S: usize) type {
                 .digest = new_digest,
             };
         }
-
 
         pub fn encodedLen(self: Self) usize {
             var code_buf: [10]u8 = undefined;
@@ -126,7 +124,8 @@ test "basic multihash operations" {
     try testing.expectEqual(mh.getCode(), Multicodec.SHA2_256);
     try testing.expectEqual(mh.getSize(), expected_digest.len);
     try testing.expectEqualSlices(u8, mh.getDigest(), &expected_digest);
-}test "multihash resize" {
+}
+test "multihash resize" {
     const input = "test data";
     var mh = try Multihash(32).wrap(Multicodec.CIDV1, input);
 
