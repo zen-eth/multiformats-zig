@@ -113,7 +113,7 @@ pub fn main() !void {
             \\const std = @import("std");
             \\const MulticodecTag = @import("multicodec_tag.zig").MulticodecTag;
             \\
-            \\pub const Multicodec = enum(u32) {
+            \\pub const Multicodec = enum(u64) {
             \\
         );
 
@@ -124,7 +124,7 @@ pub fn main() !void {
             for (name) |*c| {
                 if (c.* == '-') c.* = '_';
             }
-            try writer.print("    {s} = 0x{x:0>2},\n", .{ name, @as(u32, @intCast(codec.code)) });
+            try writer.print("    {s} = 0x{x:0>2},\n", .{ name, @as(u64, @intCast(codec.code)) });
         }
 
         // Write toString function
@@ -152,17 +152,29 @@ pub fn main() !void {
         try writer.writeAll("        });\n        return name_map.get(name) orelse error.UnknownMulticodec;\n    }\n\n");
 
         // Write fromCode function
-        try writer.writeAll("    pub fn fromCode(code: u32) !Multicodec {\n        return switch (code) {\n");
+        try writer.writeAll("    pub fn fromCode(code: u64) !Multicodec {\n        return switch (code) {\n");
         for (codecs.items) |codec| {
             const name = try std.ascii.allocUpperString(allocator, codec.name);
             defer allocator.free(name);
             for (name) |*c| {
                 if (c.* == '-') c.* = '_';
             }
-            try writer.print("            0x{x:0>2} => .{s},\n", .{ @as(u32, @intCast(codec.code)), name });
+            try writer.print("            0x{x:0>2} => .{s},\n", .{ @as(u64, @intCast(codec.code)), name });
         }
         try writer.writeAll("            else => error.UnknownMulticodec,\n        };\n    }\n\n");
 
+        // // Write getTag function
+        // try writer.writeAll("    pub fn getTag(self: Multicodec) MulticodecTag {\n        return switch (self) {\n");
+        // for (codecs.items) |codec| {
+        //     const name = try std.ascii.allocUpperString(allocator, codec.name);
+        //     defer allocator.free(name);
+        //     for (name) |*c| {
+        //         if (c.* == '-') c.* = '_';
+        //     }
+        //     const trimmed_tag = std.mem.trim(u8, codec.tag, " ");
+        //     try writer.print("            .{s} => .{s},\n", .{ name, trimmed_tag });
+        // }
+        // try writer.writeAll("        };\n    }\n};\n");
         // Write getTag function
         try writer.writeAll("    pub fn getTag(self: Multicodec) MulticodecTag {\n        return switch (self) {\n");
         for (codecs.items) |codec| {
@@ -173,6 +185,18 @@ pub fn main() !void {
             }
             const trimmed_tag = std.mem.trim(u8, codec.tag, " ");
             try writer.print("            .{s} => .{s},\n", .{ name, trimmed_tag });
+        }
+        try writer.writeAll("        };\n    }\n\n");
+
+        // Write getCode function
+        try writer.writeAll("    pub fn getCode(self: Multicodec) u64 {\n        return switch (self) {\n");
+        for (codecs.items) |codec| {
+            const name = try std.ascii.allocUpperString(allocator, codec.name);
+            defer allocator.free(name);
+            for (name) |*c| {
+                if (c.* == '-') c.* = '_';
+            }
+            try writer.print("            .{s} => 0x{x:0>2},\n", .{ name, @as(u64, @intCast(codec.code)) });
         }
         try writer.writeAll("        };\n    }\n};\n");
     }

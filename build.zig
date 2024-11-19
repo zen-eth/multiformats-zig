@@ -5,13 +5,13 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     // Create the module
-    _ = b.addModule("multicodec-zig", .{
+    _ = b.addModule("multiformats-zig", .{
         .root_source_file = b.path("src/root.zig"),
     });
 
     // Create the library
     const lib = b.addStaticLibrary(.{
-        .name = "multicodec-zig",
+        .name = "multiformats-zig",
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,

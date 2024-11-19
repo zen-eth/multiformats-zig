@@ -1,5 +1,5 @@
-# Multicodec zig 
-This is the zig implementation of the multicodec [spec](https://github.com/multiformats/multicodec).
+# Multiformats zig 
+This is the zig implementation of the multiformats [spec](https://github.com/multiformats/multiformats).
 
 ## Build
 ```bash
@@ -14,12 +14,12 @@ zig build-exe src/generate.zig
 
 ## Add to your project
 ```bash
-zig fetch --save https://github.com/optimism-java/multicodec-zig/archive/main.tar.gz
+zig fetch --save https://github.com/optimism-java/multiformats-zig/archive/main.tar.gz
 ```
 
 ## Usage
 ```zig
-const multicodec = @import("multicodec-zig");
+const multicodec = @import("multiformats-zig");
 ```
 
 ## License
