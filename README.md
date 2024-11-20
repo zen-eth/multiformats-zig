@@ -21,7 +21,7 @@ zig fetch --save https://github.com/optimism-java/multiformats-zig/archive/main.
 
 ## Usage
 ```zig
-const multicodec = @import("multiformats-zig");
+const multiformats = @import("multiformats-zig");
 ```
 
 ## License
