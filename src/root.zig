@@ -8,6 +8,9 @@ const multicodec_tag = @import("multicodec_tag.zig");
 const multihash = @import("multihash.zig");
 const multihash_impls = @import("multihash_impls.zig");
 const unsigned_varint = @import("unsigned_varint.zig");
+const multibase = @import("multibase.zig");
+// const base32 = @import("base32.zig");
+// const base58 = @import("base58.zig");
 
 test {
     @import("std").testing.refAllDeclsRecursive(@This());
@@ -16,4 +19,7 @@ test {
     _ = @import("multicodec_tag.zig");
     _ = @import("multicodec.zig");
     _ = @import("multihash_impls.zig");
+    _ = @import("multibase.zig");
+    // _ = @import("base32.zig");
+    // _ = @import("base58.zig");
 }
