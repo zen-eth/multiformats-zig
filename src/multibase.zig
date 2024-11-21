@@ -321,6 +321,7 @@ pub const Base = enum {
             .Identity => identity.encode(dest[code_str.len..], source),
             .Base2 => base2.encode(dest[code_str.len..], source),
             .Base8 => base8.encode(dest[code_str.len..], source),
+            .Base10 => base10.encode(dest[code_str.len..], source),
             else => unreachable,
             // Add other encodings
         };
@@ -333,6 +334,7 @@ pub const Base = enum {
             .Identity => identity.decode(dest, source),
             .Base2 => base2.decode(dest, source),
             .Base8 => base8.decode(dest, source),
+            .Base10 => base10.decode(dest, source),
             else => unreachable,
             // Add other decodings
         };
@@ -436,23 +438,145 @@ pub const Base = enum {
             return dest[0..dest_index];
         }
     };
+
+    const base10 = struct {
+        pub fn encode(dest: []u8, source: []const u8) []const u8 {
+            if (source.len == 0) {
+                dest[0] = '0';
+                return dest[0..1];
+            }
+
+            var dest_index: usize = 0;
+            var num: [1024]u8 = undefined;
+            var num_len: usize = 0;
+
+            // Count leading zeros
+            var leading_zeros: usize = 0;
+            while (leading_zeros < source.len and source[leading_zeros] == 0) {
+                leading_zeros += 1;
+            }
+
+            // Add leading zeros to output
+            while (leading_zeros > 0) : (leading_zeros -= 1) {
+                dest[dest_index] = '0';
+                dest_index += 1;
+            }
+
+            // Convert bytes to decimal
+            for (source) |byte| {
+                var carry: u16 = byte;
+                var j: usize = 0;
+                while (j < num_len or carry > 0) : (j += 1) {
+                    if (j < num_len) {
+                        carry += @as(u16, num[j]) << 8;
+                    }
+                    num[j] = @truncate(carry % 10);
+                    carry /= 10;
+                }
+                num_len = j;
+            }
+
+            // Convert to ASCII and reverse
+            var i: usize = num_len;
+            while (i > 0) : (i -= 1) {
+                dest[dest_index] = '0' + num[i - 1];
+                dest_index += 1;
+            }
+
+            return dest[0..dest_index];
+        }
+
+        pub fn decode(dest: []u8, source: []const u8) DecodeError![]const u8 {
+            if (source.len == 0) {
+                return dest[0..0];
+            }
+
+            var dest_index: usize = 0;
+            var num: [1024]u8 = undefined;
+            var num_len: usize = 0;
+
+            // Count leading zeros
+            var leading_zeros: usize = 0;
+            while (leading_zeros < source.len and source[leading_zeros] == '0') {
+                leading_zeros += 1;
+            }
+
+            // Add leading zeros to output
+            while (leading_zeros > 0) : (leading_zeros -= 1) {
+                dest[dest_index] = 0;
+                dest_index += 1;
+            }
+
+            // Convert decimal to bytes
+            for (source) |c| {
+                if (c < '0' or c > '9') return DecodeError.InvalidChar;
+
+                var carry: u16 = c - '0';
+                var j: usize = 0;
+                while (j < num_len or carry > 0) : (j += 1) {
+                    if (j < num_len) {
+                        carry += @as(u16, num[j]) * 10;
+                    }
+                    num[j] = @truncate(carry);
+                    carry >>= 8;
+                }
+                num_len = j;
+            }
+
+            // Copy and reverse
+            var i: usize = num_len;
+            while (i > 0) : (i -= 1) {
+                dest[dest_index] = num[i - 1];
+                dest_index += 1;
+            }
+
+            return dest[0..dest_index];
+        }
+    };
 };
 
 test "Base.encode/decode base2" {
     const testing = std.testing;
-
     {
         var dest: [256]u8 = undefined;
-        const source = "Decentralize everything!!!";
+        const source = "\x00\x00yes mani !";
         const encoded = Base.Base2.encode(dest[0..], source);
-        try testing.expectEqualStrings("00100010001100101011000110110010101101110011101000111001001100001011011000110100101111010011001010010000001100101011101100110010101110010011110010111010001101000011010010110111001100111001000010010000100100001", encoded);
+        try testing.expectEqualStrings("0000000000000000001111001011001010111001100100000011011010110000101101110011010010010000000100001", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
-        const source = "00100010001100101011000110110010101101110011101000111001001100001011011000110100101111010011001010010000001100101011101100110010101110010011110010111010001101000011010010110111001100111001000010010000100100001";
+        const source = "0000000000000000001111001011001010111001100100000011011010110000101101110011010010010000000100001";
         const decoded = try Base.Base2.decode(dest[0..], source[1..]);
-        try testing.expectEqualStrings("Decentralize everything!!!", decoded);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Base2.encode(dest[0..], source);
+        try testing.expectEqualStrings("00000000001111001011001010111001100100000011011010110000101101110011010010010000000100001", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "00000000001111001011001010111001100100000011011010110000101101110011010010010000000100001";
+        const decoded = try Base.Base2.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "yes mani !";
+        const encoded = Base.Base2.encode(dest[0..], source);
+        try testing.expectEqualStrings("001111001011001010111001100100000011011010110000101101110011010010010000000100001", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "001111001011001010111001100100000011011010110000101101110011010010010000000100001";
+        const decoded = try Base.Base2.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("yes mani !", decoded);
     }
 }
 
@@ -461,33 +585,134 @@ test "Base.encode/decode identity" {
 
     {
         var dest: [256]u8 = undefined;
-        const source = "Decentralize everything!!!";
+        const source = "yes mani !";
         const encoded = Base.Identity.encode(dest[0..], source);
-        try testing.expectEqualStrings("\x00Decentralize everything!!!", encoded);
+        try testing.expectEqualStrings("\x00yes mani !", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
-        const source = "\x00Decentralize everything!!!";
+        const source = "\x00yes mani !";
         const decoded = try Base.Identity.decode(dest[0..], source[1..]);
-        try testing.expectEqualStrings("Decentralize everything!!!", decoded);
+        try testing.expectEqualStrings("yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Identity.encode(dest[0..], source);
+        try testing.expectEqualStrings("\x00\x00yes mani !", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const decoded = try Base.Identity.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const encoded = Base.Identity.encode(dest[0..], source);
+        try testing.expectEqualStrings("\x00\x00\x00yes mani !", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00\x00yes mani !";
+        const decoded = try Base.Identity.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 }
 
 test "Base.encode/decode base8" {
     const testing = std.testing;
-
     {
         var dest: [256]u8 = undefined;
-        const source = "Twas brillig, and the slithy toves";
+        const source = "yes mani !";
         const encoded = Base.Base8.encode(dest[0..], source);
-        try testing.expectEqualStrings("72507354134620142344645543306454713020141334620403506414510071554322721503622016433673145346", encoded);
+        try testing.expectEqualStrings("7362625631006654133464440102", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
-        const source = "72507354134620142344645543306454713020141334620403506414510071554322721503622016433673145346";
+        const source = "7362625631006654133464440102";
         const decoded = try Base.Base8.decode(dest[0..], source[1..]);
-        try testing.expectEqualStrings("Twas brillig, and the slithy toves", decoded);
+        try testing.expectEqualStrings("yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Base8.encode(dest[0..], source);
+        try testing.expectEqualStrings("7000745453462015530267151100204", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "7000745453462015530267151100204";
+        const decoded = try Base.Base8.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const encoded = Base.Base8.encode(dest[0..], source);
+        try testing.expectEqualStrings("700000171312714403326055632220041", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "700000171312714403326055632220041";
+        const decoded = try Base.Base8.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
+    }
+}
+
+test "Base.encode/decode base10" {
+    const testing = std.testing;
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "yes mani !";
+        const encoded = Base.Base10.encode(dest[0..], source);
+        try testing.expectEqualStrings("9573277761329450583662625", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "9573277761329450583662625";
+        const decoded = try Base.Base10.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Base10.encode(dest[0..], source);
+        try testing.expectEqualStrings("90573277761329450583662625", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "90573277761329450583662625";
+        const decoded = try Base.Base10.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const encoded = Base.Base10.encode(dest[0..], source);
+        try testing.expectEqualStrings("900573277761329450583662625", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "900573277761329450583662625";
+        const decoded = try Base.Base10.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 }
