@@ -322,6 +322,8 @@ pub const Base = enum {
             .Base2 => base2.encode(dest[code_str.len..], source),
             .Base8 => base8.encode(dest[code_str.len..], source),
             .Base10 => base10.encode(dest[code_str.len..], source),
+            .Base16Lower => base16.encodeLower(dest[code_str.len..], source),
+            .Base16Upper => base16.encodeUpper(dest[code_str.len..], source),
             else => unreachable,
             // Add other encodings
         };
@@ -335,6 +337,8 @@ pub const Base = enum {
             .Base2 => base2.decode(dest, source),
             .Base8 => base8.decode(dest, source),
             .Base10 => base10.decode(dest, source),
+            .Base16Lower => base16.decode(dest, source),
+            .Base16Upper => base16.decode(dest, source),
             else => unreachable,
             // Add other decodings
         };
@@ -533,6 +537,54 @@ pub const Base = enum {
             return dest[0..dest_index];
         }
     };
+
+    const base16 = struct {
+        const ALPHABET_LOWER = "0123456789abcdef";
+        const ALPHABET_UPPER = "0123456789ABCDEF";
+
+        pub fn encodeLower(dest: []u8, source: []const u8) []const u8 {
+            var dest_index: usize = 0;
+            for (source) |byte| {
+                dest[dest_index] = ALPHABET_LOWER[byte >> 4];
+                dest[dest_index + 1] = ALPHABET_LOWER[byte & 0x0F];
+                dest_index += 2;
+            }
+            return dest[0..dest_index];
+        }
+
+        pub fn encodeUpper(dest: []u8, source: []const u8) []const u8 {
+            var dest_index: usize = 0;
+            for (source) |byte| {
+                dest[dest_index] = ALPHABET_UPPER[byte >> 4];
+                dest[dest_index + 1] = ALPHABET_UPPER[byte & 0x0F];
+                dest_index += 2;
+            }
+            return dest[0..dest_index];
+        }
+
+        pub fn decode(dest: []u8, source: []const u8) DecodeError![]const u8 {
+            if (source.len % 2 != 0) return DecodeError.InvalidChar;
+
+            var dest_index: usize = 0;
+            var i: usize = 0;
+            while (i < source.len) : (i += 2) {
+                const high = try decodeChar(source[i]);
+                const low = try decodeChar(source[i + 1]);
+                dest[dest_index] = (high << 4) | low;
+                dest_index += 1;
+            }
+            return dest[0..dest_index];
+        }
+
+        fn decodeChar(c: u8) DecodeError!u8 {
+            return switch (c) {
+                '0'...'9' => c - '0',
+                'a'...'f' => c - 'a' + 10,
+                'A'...'F' => c - 'A' + 10,
+                else => DecodeError.InvalidChar,
+            };
+        }
+    };
 };
 
 test "Base.encode/decode base2" {
@@ -713,6 +765,96 @@ test "Base.encode/decode base10" {
         var dest: [256]u8 = undefined;
         const source = "900573277761329450583662625";
         const decoded = try Base.Base10.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
+    }
+}
+
+test "Base.encode/decode base16" {
+    const testing = std.testing;
+
+    // Test Base16Lower
+    {
+        var dest: [256]u8 = undefined;
+        const source = "yes mani !";
+        const encoded = Base.Base16Lower.encode(dest[0..], source);
+        try testing.expectEqualStrings("f796573206d616e692021", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "f796573206d616e692021";
+        const decoded = try Base.Base16Lower.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Base16Lower.encode(dest[0..], source);
+        try testing.expectEqualStrings("f00796573206d616e692021", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "f00796573206d616e692021";
+        const decoded = try Base.Base16Lower.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const encoded = Base.Base16Lower.encode(dest[0..], source);
+        try testing.expectEqualStrings("f0000796573206d616e692021", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "f0000796573206d616e692021";
+        const decoded = try Base.Base16Lower.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
+    }
+
+    // Test Base16Upper
+    {
+        var dest: [256]u8 = undefined;
+        const source = "yes mani !";
+        const encoded = Base.Base16Upper.encode(dest[0..], source);
+        try testing.expectEqualStrings("F796573206D616E692021", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "F796573206D616E692021";
+        const decoded = try Base.Base16Upper.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Base16Upper.encode(dest[0..], source);
+        try testing.expectEqualStrings("F00796573206D616E692021", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "F00796573206D616E692021";
+        const decoded = try Base.Base16Upper.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const encoded = Base.Base16Upper.encode(dest[0..], source);
+        try testing.expectEqualStrings("F0000796573206D616E692021", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "F0000796573206D616E692021";
+        const decoded = try Base.Base16Upper.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 }
