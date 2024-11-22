@@ -234,13 +234,34 @@ pub const Base = enum {
     };
 
     const base8 = struct {
+        const Vec = @Vector(16, u8);
+        const ascii_zero: Vec = @splat('0');
+        const ascii_seven: Vec = @splat('7');
+
         pub fn encode(dest: []u8, source: []const u8) []const u8 {
             var dest_index: usize = 0;
+            var i: usize = 0;
+
+            // Process 3 bytes at once (8 octal digits)
+            while (i + 3 <= source.len) : (i += 3) {
+                const value = (@as(u32, source[i]) << 16) |
+                    (@as(u32, source[i + 1]) << 8) |
+                    source[i + 2];
+
+                inline for (0..8) |j| {
+                    const shift = 21 - (j * 3);
+                    const index = (value >> shift) & 0x7;
+                    dest[dest_index + j] = '0' + @as(u8, @truncate(index));
+                }
+                dest_index += 8;
+            }
+
+            // Handle remaining bytes
             var bits: u16 = 0;
             var bit_count: u4 = 0;
 
-            for (source) |byte| {
-                bits = (bits << 8) | byte;
+            while (i < source.len) : (i += 1) {
+                bits = (bits << 8) | source[i];
                 bit_count += 8;
 
                 while (bit_count >= 3) {
@@ -262,10 +283,35 @@ pub const Base = enum {
 
         pub fn decode(dest: []u8, source: []const u8) DecodeError![]const u8 {
             var dest_index: usize = 0;
+            var i: usize = 0;
+
+            // Validate input using SIMD
+            while (i + 16 <= source.len) : (i += 16) {
+                const chunk = @as(Vec, source[i..][0..16].*);
+                const is_valid = @reduce(.And, chunk >= ascii_zero) and
+                    @reduce(.And, chunk <= ascii_seven);
+                if (!is_valid) return DecodeError.InvalidChar;
+            }
+
+            // Process 8 octal digits (3 bytes) at once
+            i = 0;
+            while (i + 8 <= source.len) : (i += 8) {
+                var value: u32 = 0;
+                inline for (0..8) |j| {
+                    value = (value << 3) | (source[i + j] - '0');
+                }
+                dest[dest_index] = @truncate(value >> 16);
+                dest[dest_index + 1] = @truncate(value >> 8);
+                dest[dest_index + 2] = @truncate(value);
+                dest_index += 3;
+            }
+
+            // Handle remaining digits
             var bits: u16 = 0;
             var bit_count: u4 = 0;
 
-            for (source) |c| {
+            while (i < source.len) : (i += 1) {
+                const c = source[i];
                 if (c < '0' or c > '7') return DecodeError.InvalidChar;
 
                 bits = (bits << 3) | (c - '0');
@@ -398,24 +444,66 @@ pub const Base = enum {
     const base16 = struct {
         const ALPHABET_LOWER = "0123456789abcdef";
         const ALPHABET_UPPER = "0123456789ABCDEF";
+        const Vec = @Vector(16, u8);
+
+        // Lookup tables for faster decoding
+        const DECODE_TABLE = blk: {
+            var table: [256]u8 = undefined;
+            for (&table) |*v| v.* = 0xFF;
+            for (0..16) |i| {
+                table[ALPHABET_LOWER[i]] = @truncate(i);
+                table[ALPHABET_UPPER[i]] = @truncate(i);
+            }
+            break :blk table;
+        };
 
         pub fn encodeLower(dest: []u8, source: []const u8) []const u8 {
             var dest_index: usize = 0;
-            for (source) |byte| {
+            var i: usize = 0;
+
+            // Process 8 bytes (16 hex chars) at once
+            while (i + 8 <= source.len) : (i += 8) {
+                inline for (0..8) |j| {
+                    const byte = source[i + j];
+                    dest[dest_index + j * 2] = ALPHABET_LOWER[byte >> 4];
+                    dest[dest_index + j * 2 + 1] = ALPHABET_LOWER[byte & 0x0F];
+                }
+                dest_index += 16;
+            }
+
+            // Handle remaining bytes
+            while (i < source.len) : (i += 1) {
+                const byte = source[i];
                 dest[dest_index] = ALPHABET_LOWER[byte >> 4];
                 dest[dest_index + 1] = ALPHABET_LOWER[byte & 0x0F];
                 dest_index += 2;
             }
+
             return dest[0..dest_index];
         }
 
         pub fn encodeUpper(dest: []u8, source: []const u8) []const u8 {
             var dest_index: usize = 0;
-            for (source) |byte| {
+            var i: usize = 0;
+
+            // Process 8 bytes (16 hex chars) at once
+            while (i + 8 <= source.len) : (i += 8) {
+                inline for (0..8) |j| {
+                    const byte = source[i + j];
+                    dest[dest_index + j * 2] = ALPHABET_UPPER[byte >> 4];
+                    dest[dest_index + j * 2 + 1] = ALPHABET_UPPER[byte & 0x0F];
+                }
+                dest_index += 16;
+            }
+
+            // Handle remaining bytes
+            while (i < source.len) : (i += 1) {
+                const byte = source[i];
                 dest[dest_index] = ALPHABET_UPPER[byte >> 4];
                 dest[dest_index + 1] = ALPHABET_UPPER[byte & 0x0F];
                 dest_index += 2;
             }
+
             return dest[0..dest_index];
         }
 
@@ -424,22 +512,28 @@ pub const Base = enum {
 
             var dest_index: usize = 0;
             var i: usize = 0;
+
+            // Process 16 hex chars (8 bytes) at once
+            while (i + 16 <= source.len) : (i += 16) {
+                inline for (0..8) |j| {
+                    const high = DECODE_TABLE[source[i + j * 2]];
+                    const low = DECODE_TABLE[source[i + j * 2 + 1]];
+                    if (high == 0xFF or low == 0xFF) return DecodeError.InvalidChar;
+                    dest[dest_index + j] = (high << 4) | low;
+                }
+                dest_index += 8;
+            }
+
+            // Handle remaining chars
             while (i < source.len) : (i += 2) {
-                const high = try decodeChar(source[i]);
-                const low = try decodeChar(source[i + 1]);
+                const high = DECODE_TABLE[source[i]];
+                const low = DECODE_TABLE[source[i + 1]];
+                if (high == 0xFF or low == 0xFF) return DecodeError.InvalidChar;
                 dest[dest_index] = (high << 4) | low;
                 dest_index += 1;
             }
-            return dest[0..dest_index];
-        }
 
-        fn decodeChar(c: u8) DecodeError!u8 {
-            return switch (c) {
-                '0'...'9' => c - '0',
-                'a'...'f' => c - 'a' + 10,
-                'A'...'F' => c - 'A' + 10,
-                else => DecodeError.InvalidChar,
-            };
+            return dest[0..dest_index];
         }
     };
 
