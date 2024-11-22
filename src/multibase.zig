@@ -2,6 +2,7 @@ const std = @import("std");
 
 pub const DecodeError = error{
     InvalidChar,
+    InvalidBaseString,
 };
 
 pub const Base = enum {
@@ -87,8 +88,7 @@ pub const Base = enum {
             .Base64Pad => std.base64.standard.Encoder.encode(dest[code_str.len..], source),
             .Base64Url => std.base64.url_safe_no_pad.Encoder.encode(dest[code_str.len..], source),
             .Base64UrlPad => std.base64.url_safe.Encoder.encode(dest[code_str.len..], source),
-            else => unreachable,
-            // Add other encodings
+            .Base256Emoji => base256emoji.encode(dest[code_str.len..], source),
         };
 
         return dest[0 .. code_str.len + encoded.len];
@@ -102,15 +102,15 @@ pub const Base = enum {
             .Base10 => base10.decode(dest, source),
             .Base16Lower => base16.decode(dest, source),
             .Base16Upper => base16.decode(dest, source),
-            .Base32Lower => base32.decode(dest, source, base32.ALPHABET_LOWER),
-            .Base32Upper => base32.decode(dest, source, base32.ALPHABET_UPPER),
-            .Base32HexLower => base32.decode(dest, source, base32.ALPHABET_HEX_LOWER),
-            .Base32HexUpper => base32.decode(dest, source, base32.ALPHABET_HEX_UPPER),
-            .Base32PadLower => base32.decode(dest, source, base32.ALPHABET_LOWER),
-            .Base32PadUpper => base32.decode(dest, source, base32.ALPHABET_UPPER),
-            .Base32HexPadLower => base32.decode(dest, source, base32.ALPHABET_HEX_LOWER),
-            .Base32HexPadUpper => base32.decode(dest, source, base32.ALPHABET_HEX_UPPER),
-            .Base32Z => base32.decode(dest, source, base32.ALPHABET_Z),
+            .Base32Lower => base32.decode(dest, source, &base32.DECODE_TABLE_LOWER),
+            .Base32Upper => base32.decode(dest, source, &base32.DECODE_TABLE_UPPER),
+            .Base32HexLower => base32.decode(dest, source, &base32.DECODE_TABLE_HEX_LOWER),
+            .Base32HexUpper => base32.decode(dest, source, &base32.DECODE_TABLE_HEX_UPPER),
+            .Base32PadLower => base32.decode(dest, source, &base32.DECODE_TABLE_LOWER),
+            .Base32PadUpper => base32.decode(dest, source, &base32.DECODE_TABLE_UPPER),
+            .Base32HexPadLower => base32.decode(dest, source, &base32.DECODE_TABLE_HEX_LOWER),
+            .Base32HexPadUpper => base32.decode(dest, source, &base32.DECODE_TABLE_HEX_UPPER),
+            .Base32Z => base32.decode(dest, source, &base32.DECODE_TABLE_Z),
             .Base36Lower => base36.decode(dest, source, base36.ALPHABET_LOWER),
             .Base36Upper => base36.decode(dest, source, base36.ALPHABET_UPPER),
             .Base58Flickr => base58.decodeFlickr(dest, source),
@@ -131,8 +131,7 @@ pub const Base = enum {
                 try std.base64.url_safe.Decoder.decode(dest, source);
                 break :blk dest[0..try std.base64.url_safe.Decoder.calcSizeForSlice(source)];
             },
-            else => unreachable,
-            // Add other decodings
+            .Base256Emoji => base256emoji.decode(dest, source),
         };
     }
 
@@ -243,20 +242,28 @@ pub const Base = enum {
             }
 
             var dest_index: usize = 0;
-            var num: [1024]u8 = undefined;
+            var num: [1024]u8 align(16) = undefined;
             var num_len: usize = 0;
 
-            // Count leading zeros
+            // Count leading zeros using SIMD
+            const Vec = @Vector(16, u8);
+            const zeros: Vec = @splat(0);
             var leading_zeros: usize = 0;
+
+            while (leading_zeros + 16 <= source.len) {
+                const chunk = @as(Vec, source[leading_zeros..][0..16].*);
+                const is_zero = chunk == zeros;
+                const zero_count = @popCount(@as(u16, @bitCast(is_zero)));
+                if (zero_count != 16) break;
+                leading_zeros += 16;
+            }
+
             while (leading_zeros < source.len and source[leading_zeros] == 0) {
                 leading_zeros += 1;
             }
 
-            // Add leading zeros to output
-            while (leading_zeros > 0) : (leading_zeros -= 1) {
-                dest[dest_index] = '0';
-                dest_index += 1;
-            }
+            @memset(dest[0..leading_zeros], '0');
+            dest_index += leading_zeros;
 
             // Convert bytes to decimal
             for (source) |byte| {
@@ -283,25 +290,35 @@ pub const Base = enum {
         }
 
         pub fn decode(dest: []u8, source: []const u8) DecodeError![]const u8 {
-            if (source.len == 0) {
-                return dest[0..0];
-            }
+            if (source.len == 0) return dest[0..0];
 
             var dest_index: usize = 0;
-            var num: [1024]u8 = undefined;
+            var num: [1024]u8 align(16) = undefined;
             var num_len: usize = 0;
 
-            // Count leading zeros
+            // Count leading zeros using SIMD
+            const Vec = @Vector(16, u8);
+            const ascii_zero: Vec = @splat('0');
+            const ascii_nine: Vec = @splat('9');
             var leading_zeros: usize = 0;
+
+            // Validate digits using SIMD
+            var i: usize = 0;
+            while (i + 16 <= source.len) : (i += 16) {
+                const chunk = @as(Vec, source[i..][0..16].*);
+                const valid_digits = @reduce(.And, chunk >= ascii_zero) and @reduce(.And, chunk <= ascii_nine);
+                if (!valid_digits) {
+                    return DecodeError.InvalidChar;
+                }
+            }
+
+            // Count leading zeros
             while (leading_zeros < source.len and source[leading_zeros] == '0') {
                 leading_zeros += 1;
             }
 
-            // Add leading zeros to output
-            while (leading_zeros > 0) : (leading_zeros -= 1) {
-                dest[dest_index] = 0;
-                dest_index += 1;
-            }
+            @memset(dest[0..leading_zeros], 0);
+            dest_index += leading_zeros;
 
             // Convert decimal to bytes
             for (source) |c| {
@@ -320,7 +337,7 @@ pub const Base = enum {
             }
 
             // Copy and reverse
-            var i: usize = num_len;
+            i = num_len;
             while (i > 0) : (i -= 1) {
                 dest[dest_index] = num[i - 1];
                 dest_index += 1;
@@ -386,15 +403,58 @@ pub const Base = enum {
         const ALPHABET_Z = "ybndrfg8ejkmcpqxot1uwisza345h769";
         const PADDING = '=';
 
+        // Pre-computed decode tables for each alphabet
+        const DECODE_TABLE_LOWER = createDecodeTable(ALPHABET_LOWER);
+        const DECODE_TABLE_UPPER = createDecodeTable(ALPHABET_UPPER);
+        const DECODE_TABLE_HEX_LOWER = createDecodeTable(ALPHABET_HEX_LOWER);
+        const DECODE_TABLE_HEX_UPPER = createDecodeTable(ALPHABET_HEX_UPPER);
+        const DECODE_TABLE_Z = createDecodeTable(ALPHABET_Z);
+
+        const DecodeTable = [256]u8;
+
+        fn createDecodeTable(comptime alphabet: []const u8) DecodeTable {
+            var table: DecodeTable = [_]u8{0xFF} ** 256;
+            for (alphabet, 0..) |c, i| {
+                table[c] = @truncate(i);
+                // Also add lowercase variant for uppercase alphabets
+                if (c >= 'A' and c <= 'Z') {
+                    table[c + 32] = @truncate(i); // +32 converts to lowercase
+                }
+            }
+            return table;
+        }
+
         pub fn encode(dest: []u8, source: []const u8, alphabet: []const u8, pad: bool) []const u8 {
             var dest_index: usize = 0;
             var bits: u16 = 0;
             var bit_count: u4 = 0;
 
-            for (source) |byte| {
+            // SIMD optimization for 8-byte chunks
+            const Vec = @Vector(8, u8);
+            const chunk_size = 8;
+            const full_chunks = source.len / chunk_size;
+
+            var i: usize = 0;
+            while (i < full_chunks) : (i += 1) {
+                const vec = @as(Vec, source[i * chunk_size ..][0..chunk_size].*);
+                // Process 8 bytes at once using SIMD
+                inline for (0..8) |j| {
+                    const byte = vec[j];
+                    bits = (bits << 8) | byte;
+                    bit_count += 8;
+                    while (bit_count >= 5) {
+                        bit_count -= 5;
+                        const index = (bits >> bit_count) & 0x1F;
+                        dest[dest_index] = alphabet[index];
+                        dest_index += 1;
+                    }
+                }
+            }
+
+            // Handle remaining bytes
+            for (source[full_chunks * chunk_size ..]) |byte| {
                 bits = (bits << 8) | byte;
                 bit_count += 8;
-
                 while (bit_count >= 5) {
                     bit_count -= 5;
                     const index = (bits >> bit_count) & 0x1F;
@@ -411,17 +471,14 @@ pub const Base = enum {
 
             if (pad) {
                 const padding = (8 - dest_index % 8) % 8;
-                var i: usize = 0;
-                while (i < padding) : (i += 1) {
-                    dest[dest_index] = PADDING;
-                    dest_index += 1;
-                }
+                @memset(dest[dest_index..][0..padding], PADDING);
+                dest_index += padding;
             }
 
             return dest[0..dest_index];
         }
 
-        pub fn decode(dest: []u8, source: []const u8, alphabet: []const u8) DecodeError![]const u8 {
+        pub fn decode(dest: []u8, source: []const u8, decode_table: *const [256]u8) DecodeError![]const u8 {
             var dest_index: usize = 0;
             var bits: u16 = 0;
             var bit_count: u4 = 0;
@@ -429,7 +486,9 @@ pub const Base = enum {
             for (source) |c| {
                 if (c == PADDING) continue;
 
-                const value = indexOf(alphabet, c) orelse return DecodeError.InvalidChar;
+                const value = decode_table[c];
+                if (value == 0xFF) return DecodeError.InvalidChar;
+
                 bits = (bits << 5) | value;
                 bit_count += 5;
 
@@ -441,13 +500,6 @@ pub const Base = enum {
             }
 
             return dest[0..dest_index];
-        }
-
-        fn indexOf(alphabet: []const u8, c: u8) ?u8 {
-            for (alphabet, 0..) |char, i| {
-                if (char == c) return @truncate(i);
-            }
-            return null;
         }
     };
 
@@ -780,6 +832,64 @@ pub const Base = enum {
                 if (char == c) return @truncate(i);
             }
             return null;
+        }
+    };
+
+    const base256emoji = struct {
+        const ALPHABET = "🚀🪐☄🛰🌌🌑🌒🌓🌔🌕🌖🌗🌘🌍🌏🌎🐉☀💻🖥💾💿😂❤😍🤣😊🙏💕😭😘👍😅👏😁🔥🥰💔💖💙😢🤔😆🙄💪😉☺👌🤗💜😔😎😇🌹🤦🎉💞✌✨🤷😱😌🌸🙌😋💗💚😏💛🙂💓🤩😄😀🖤😃💯🙈👇🎶😒🤭❣😜💋👀😪😑💥🙋😞😩😡🤪👊🥳😥🤤👉💃😳✋😚😝😴🌟😬🙃🍀🌷😻😓⭐✅🥺🌈😈🤘💦✔😣🏃💐☹🎊💘😠☝😕🌺🎂🌻😐🖕💝🙊😹🗣💫💀👑🎵🤞😛🔴😤🌼😫⚽🤙☕🏆🤫👈😮🙆🍻🍃🐶💁😲🌿🧡🎁⚡🌞🎈❌✊👋😰🤨😶🤝🚶💰🍓💢🤟🙁🚨💨🤬✈🎀🍺🤓😙💟🌱😖👶🥴▶➡❓💎💸⬇😨🌚🦋😷🕺⚠🙅😟😵👎🤲🤠🤧📌🔵💅🧐🐾🍒😗🤑🌊🤯🐷☎💧😯💆👆🎤🙇🍑❄🌴💣🐸💌📍🥀🤢👅💡💩👐📸👻🤐🤮🎼🥵🚩🍎🍊👼💍📣🥂";
+
+        const EMOJI_POSITIONS = init: {
+            var table: [256]usize = undefined;
+            var pos: usize = 0;
+            var i: usize = 0;
+            while (i < ALPHABET.len) {
+                table[pos] = i;
+                pos += 1;
+                const len = (std.unicode.utf8ByteSequenceLength(ALPHABET[i]) catch unreachable);
+                i += @as(usize, len);
+            }
+            break :init table;
+        };
+
+        const REVERSE_LOOKUP = blk: {
+            @setEvalBranchQuota(10000);
+            var table: [0x10FFFF]u8 = [_]u8{0xFF} ** 0x10FFFF;
+            var pos: usize = 0; // Changed from u8 to usize
+            var i: usize = 0;
+            while (i < ALPHABET.len) {
+                const len = (std.unicode.utf8ByteSequenceLength(ALPHABET[i]) catch unreachable);
+                const codepoint = std.unicode.utf8Decode(ALPHABET[i..][0..@as(usize, len)]) catch unreachable;
+                table[codepoint] = @truncate(pos); // Truncate pos to u8 when assigning
+                pos += 1;
+                i += @as(usize, len);
+            }
+            break :blk table;
+        };
+
+        pub fn encode(dest: []u8, source: []const u8) []const u8 {
+            var dest_index: usize = 0;
+            for (source) |byte| {
+                const emoji_start = EMOJI_POSITIONS[byte];
+                const emoji_len = @as(usize, std.unicode.utf8ByteSequenceLength(ALPHABET[emoji_start]) catch unreachable);
+                @memcpy(dest[dest_index..][0..emoji_len], ALPHABET[emoji_start..][0..emoji_len]);
+                dest_index += emoji_len;
+            }
+            return dest[0..dest_index];
+        }
+
+        pub fn decode(dest: []u8, source: []const u8) ![]const u8 {
+            var dest_index: usize = 0;
+            var i: usize = 0;
+            while (i < source.len) {
+                const len = @as(usize, std.unicode.utf8ByteSequenceLength(source[i]) catch return error.InvalidBaseString);
+                const codepoint = std.unicode.utf8Decode(source[i..][0..len]) catch return error.InvalidBaseString;
+                const byte = REVERSE_LOOKUP[codepoint];
+                if (byte == 0xFF) return error.InvalidBaseString;
+                dest[dest_index] = byte;
+                dest_index += 1;
+                i += len;
+            }
+            return dest[0..dest_index];
         }
     };
 };
@@ -1801,12 +1911,53 @@ test "Base.encode/decode base64" {
         const decoded = try Base.Base64UrlPad.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
+}
 
-    // Test Base256Emoji
-    // {
-    //     var dest: [1024]u8 = undefined;
-    //     const source = "yes mani !";
-    //     const encoded = Base.Base256Emoji.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("🚀👍😅😊📍💜😊😘👍🤣😊🙏", encoded);
-    // }
+test "Base.encode/decode base256emoji" {
+    const testing = std.testing;
+
+    // Test with "yes mani !"
+    {
+        var dest: [1024]u8 = undefined;
+        const source = "yes mani !";
+        const encoded = Base.Base256Emoji.encode(dest[0..], source);
+        try testing.expectEqualStrings("🚀🏃✋🌈😅🌷🤤😻🌟😅👏", encoded);
+    }
+
+    {
+        var dest: [1024]u8 = undefined;
+        const source = "🚀🏃✋🌈😅🌷🤤😻🌟😅👏";
+        const decoded = try Base.Base256Emoji.decode(dest[0..], source[4..]);
+        try testing.expectEqualStrings("yes mani !", decoded);
+    }
+
+    // Test with "\x00yes mani !"
+    {
+        var dest: [1024]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Base256Emoji.encode(dest[0..], source);
+        try testing.expectEqualStrings("🚀🚀🏃✋🌈😅🌷🤤😻🌟😅👏", encoded);
+    }
+
+    {
+        var dest: [1024]u8 = undefined;
+        const source = "🚀🚀🏃✋🌈😅🌷🤤😻🌟😅👏";
+        const decoded = try Base.Base256Emoji.decode(dest[0..], source[4..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    // Test with "\x00\x00yes mani !"
+    {
+        var dest: [1024]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const encoded = Base.Base256Emoji.encode(dest[0..], source);
+        try testing.expectEqualStrings("🚀🚀🚀🏃✋🌈😅🌷🤤😻🌟😅👏", encoded);
+    }
+
+    {
+        var dest: [1024]u8 = undefined;
+        const source = "🚀🚀🚀🏃✋🌈😅🌷🤤😻🌟😅👏";
+        const decoded = try Base.Base256Emoji.decode(dest[0..], source[4..]);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
+    }
 }
