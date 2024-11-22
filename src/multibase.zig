@@ -148,26 +148,72 @@ pub const Base = enum {
     };
 
     const base2 = struct {
+        const Vec = @Vector(16, u8);
+        const ascii_zero: Vec = @splat('0');
+        const ascii_one: Vec = @splat('1');
+
         pub fn encode(dest: []u8, source: []const u8) []const u8 {
             var dest_index: usize = 0;
-            for (source) |byte| {
-                var i: u3 = 7;
-                while (true) {
-                    dest[dest_index] = '0' + @as(u8, @truncate((byte >> i) & 1));
-                    dest_index += 1;
-                    if (i == 0) break;
-                    i -= 1;
+            var i: usize = 0;
+
+            // Process 2 bytes at once using unrolled loops
+            while (i + 2 <= source.len) : (i += 2) {
+                const value = @as(u16, source[i]) << 8 | source[i + 1];
+
+                // Unrolled loop for first byte
+                inline for (0..8) |j| {
+                    dest[dest_index + j] = '0' + @as(u8, @truncate((value >> (15 - j)) & 1));
                 }
+                // Unrolled loop for second byte
+                inline for (0..8) |j| {
+                    dest[dest_index + j + 8] = '0' + @as(u8, @truncate((value >> (7 - j)) & 1));
+                }
+                dest_index += 16;
             }
+
+            // Handle remaining byte if any
+            if (i < source.len) {
+                const byte = source[i];
+                inline for (0..8) |j| {
+                    dest[dest_index + j] = '0' + @as(u8, @truncate((byte >> (7 - j)) & 1));
+                }
+                dest_index += 8;
+            }
+
             return dest[0..dest_index];
         }
 
         pub fn decode(dest: []u8, source: []const u8) ![]const u8 {
             var dest_index: usize = 0;
+            var i: usize = 0;
+
+            // Validate input using SIMD
+            while (i + 16 <= source.len) : (i += 16) {
+                const chunk = @as(Vec, source[i..][0..16].*);
+                const is_valid = @reduce(.And, chunk >= ascii_zero) and
+                    @reduce(.And, chunk <= ascii_one);
+                if (!is_valid) return error.InvalidChar;
+            }
+
+            // Process 16 bits (2 bytes) at once
+            i = 0;
+            while (i + 16 <= source.len) : (i += 16) {
+                var value: u16 = 0;
+                inline for (0..16) |j| {
+                    value = (value << 1) | (source[i + j] - '0');
+                }
+                dest[dest_index] = @truncate(value >> 8);
+                dest[dest_index + 1] = @truncate(value);
+                dest_index += 2;
+            }
+
+            // Handle remaining bits
             var current_byte: u8 = 0;
             var bits: u4 = 0;
+            while (i < source.len) : (i += 1) {
+                const c = source[i];
+                if (c < '0' or c > '1') return error.InvalidChar;
 
-            for (source) |c| {
                 current_byte = (current_byte << 1) | (c - '0');
                 bits += 1;
                 if (bits == 8) {
@@ -177,10 +223,12 @@ pub const Base = enum {
                     current_byte = 0;
                 }
             }
+
             if (bits > 0) {
                 dest[dest_index] = current_byte << @as(u3, @intCast(8 - bits));
                 dest_index += 1;
             }
+
             return dest[0..dest_index];
         }
     };
