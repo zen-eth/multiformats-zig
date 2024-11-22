@@ -1,257 +1,3 @@
-// const std = @import("std");
-// const base32= @import("base32.zig");
-// const base58= @import("base58.zig");
-//
-// pub const Base = enum {
-//     Identity, // 8-bit binary (encoder and decoder keeps data unmodified)
-//     Base2, // Base2 (alphabet: 01)
-//     Base8, // Base8 (alphabet: 01234567)
-//     Base10, // Base10 (alphabet: 0123456789)
-//     Base16Lower, // Base16 lower hexadecimal (alphabet: 0123456789abcdef)
-//     Base16Upper, // Base16 upper hexadecimal (alphabet: 0123456789ABCDEF)
-//     Base32Lower, // Base32, rfc4648 no padding (alphabet: abcdefghijklmnopqrstuvwxyz234567)
-//     Base32Upper, // Base32, rfc4648 no padding (alphabet: ABCDEFGHIJKLMNOPQRSTUVWXYZ234567)
-//     Base32PadLower, // Base32, rfc4648 with padding (alphabet: abcdefghijklmnopqrstuvwxyz234567)
-//     Base32PadUpper, // Base32, rfc4648 with padding (alphabet: ABCDEFGHIJKLMNOPQRSTUVWXYZ234567)
-//     Base32HexLower, // Base32hex, rfc4648 no padding (alphabet: 0123456789abcdefghijklmnopqrstuv)
-//     Base32HexUpper, // Base32hex, rfc4648 no padding (alphabet: 0123456789ABCDEFGHIJKLMNOPQRSTUV)
-//     Base32HexPadLower, // Base32hex, rfc4648 with padding (alphabet: 0123456789abcdefghijklmnopqrstuv)
-//     Base32HexPadUpper, // Base32hex, rfc4648 with padding (alphabet: 0123456789ABCDEFGHIJKLMNOPQRSTUV)
-//     Base32Z, // z-base-32 (used by Tahoe-LAFS) (alphabet: ybndrfg8ejkmcpqxot1uwisza345h769)
-//     Base36Lower, // Base36, [0-9a-z] no padding
-//     Base36Upper, // Base36, [0-9A-Z] no padding
-//     Base58Flickr, // Base58 flicker
-//     Base58Btc, // Base58 bitcoin
-//     Base64, // Base64, rfc4648 no padding
-//     Base64Pad, // Base64, rfc4648 with padding
-//     Base64Url, // Base64 url, rfc4648 no padding
-//     Base64UrlPad, // Base64 url, rfc4648 with padding
-//     Base256Emoji, // Base256Emoji
-//
-//     pub fn code(self: Base) u8 {
-//         return switch (self) {
-//             .Identity => 0x00,
-//             .Base2 => '0',
-//             .Base8 => '7',
-//             .Base10 => '9',
-//             .Base16Lower => 'f',
-//             .Base16Upper => 'F',
-//             .Base32Lower => 'b',
-//             .Base32Upper => 'B',
-//             .Base32PadLower => 'c',
-//             .Base32PadUpper => 'C',
-//             .Base32HexLower => 'v',
-//             .Base32HexUpper => 'V',
-//             .Base32HexPadLower => 't',
-//             .Base32HexPadUpper => 'T',
-//             .Base32Z => 'h',
-//             .Base36Lower => 'k',
-//             .Base36Upper => 'K',
-//             .Base58Flickr => 'Z',
-//             .Base58Btc => 'z',
-//             .Base64 => 'm',
-//             .Base64Pad => 'M',
-//             .Base64Url => 'u',
-//             .Base64UrlPad => 'U',
-//             .Base256Emoji => '🚀',
-//         };
-//     }
-// };
-//
-// pub const Error = error{
-//     UnknownBase,
-//     InvalidBaseString,
-// };
-//
-// pub fn encode(allocator: std.mem.Allocator, base: Base, input: []const u8) ![]u8 {
-//     var result = std.ArrayList(u8).init(allocator);
-//     errdefer result.deinit();
-//
-//     try result.append(base.code());
-//
-//     const encoded = switch (base) {
-//         .Identity => try allocator.dupe(u8, input),
-//         .Base2 => try encodeBase2(allocator, input),
-//         .Base8 => try encodeBase8(allocator, input),
-//         .Base10 => try encodeBase10(allocator, input),
-//         .Base16Lower => try std.fmt.allocPrint(allocator, "{x}", .{std.fmt.fmtSliceHexLower(input)}),
-//         .Base16Upper => try std.fmt.allocPrint(allocator, "{X}", .{std.fmt.fmtSliceHexUpper(input)}),
-//         .Base32Lower => try base32.standard.lower.encode(allocator, input),
-//         .Base32Upper => try base32.standard.upper.encode(allocator, input),
-//         .Base32PadLower => try base32.standard.lower.encodePadded(allocator, input),
-//         .Base32PadUpper => try base32.standard.upper.encodePadded(allocator, input),
-//         .Base32HexLower => try base32.hex.lower.encode(allocator, input),
-//         .Base32HexUpper => try base32.hex.upper.encode(allocator, input),
-//         .Base32HexPadLower => try base32.hex.lower.encodePadded(allocator, input),
-//         .Base32HexPadUpper => try base32.hex.upper.encodePadded(allocator, input),
-//         .Base32Z => try encodeBase32Z(allocator, input),
-//         .Base36Lower => try encodeBase36(allocator, input, false),
-//         .Base36Upper => try encodeBase36(allocator, input, true),
-//         .Base58Flickr => try base58.flickr.encode(allocator, input),
-//         .Base58Btc => try base58.btc.encode(allocator, input),
-//         .Base64 => try std.base64.standard_no_pad.Encoder.encode(allocator, input),
-//         .Base64Pad => try std.base64.standard.Encoder.encode(allocator, input),
-//         .Base64Url => try std.base64.url_safe_no_pad.Encoder.encode(allocator, input),
-//         .Base64UrlPad => try std.base64.url_safe.Encoder.encode(allocator, input),
-//         .Base256Emoji => try encodeBase256Emoji(allocator, input),
-//     };
-//
-//     try result.appendSlice(encoded);
-//     return result.toOwnedSlice();
-// }
-//
-// fn encodeBase2(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
-//     var result = std.ArrayList(u8).init(allocator);
-//     errdefer result.deinit();
-//
-//     for (input) |byte| {
-//         var i: u3 = 7;
-//         while (true) {
-//             try result.append('0' + ((byte >> i) & 1));
-//             if (i == 0) break;
-//             i -= 1;
-//         }
-//     }
-//     return result.toOwnedSlice();
-// }
-//
-// fn encodeBase8(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
-//     var result = std.ArrayList(u8).init(allocator);
-//     errdefer result.deinit();
-//
-//     for (input) |byte| {
-//         var i: u3 = 6;
-//         while (true) {
-//             try result.append('0' + ((byte >> i) & 0x7));
-//             if (i < 3) break;
-//             i -= 3;
-//         }
-//     }
-//     return result.toOwnedSlice();
-// }
-//
-// fn encodeBase32Z(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
-//     const ALPHABET = "ybndrfg8ejkmcpqxot1uwisza345h769";
-//     var result = std.ArrayList(u8).init(allocator);
-//     errdefer result.deinit();
-//
-//     var bit_len: usize = 0;
-//     var bits: u16 = 0;
-//
-//     for (input) |byte| {
-//         bits = (bits << 8) | byte;
-//         bit_len += 8;
-//
-//         while (bit_len >= 5) {
-//             bit_len -= 5;
-//             const index = (bits >> bit_len) & 0x1F;
-//             try result.append(ALPHABET[index]);
-//         }
-//     }
-//
-//     if (bit_len > 0) {
-//         const index = (bits << (5 - bit_len)) & 0x1F;
-//         try result.append(ALPHABET[index]);
-//     }
-//
-//     return result.toOwnedSlice();
-// }
-//
-// fn encodeBase10(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
-//     var result = std.ArrayList(u8).init(allocator);
-//     errdefer result.deinit();
-//
-//     var value = std.math.big.int.Managed.init(allocator);
-//     defer value.deinit();
-//
-//     // Convert bytes to big integer
-//     try value.setBytes(input, .big);
-//
-//     // Handle zero case
-//     if (value.eqlZero()) {
-//         try result.append('0');
-//         return result.toOwnedSlice();
-//     }
-//
-//     // Convert to decimal string
-//     while (!value.eqlZero()) {
-//         const digit = try value.divFloor(&value, 10);
-//         try result.append('0' + @as(u8, @intCast(digit)));
-//     }
-//
-//     // Reverse the result since we built it backwards
-//     std.mem.reverse(u8, result.items);
-//     return result.toOwnedSlice();
-// }
-//
-// pub fn encodeBase36(allocator: std.mem.Allocator, input: []const u8, upper: bool) ![]u8 {
-//     const ALPHABET_LOWER = "0123456789abcdefghijklmnopqrstuvwxyz";
-//     const ALPHABET_UPPER = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-//     const alphabet = if (upper) ALPHABET_UPPER else ALPHABET_LOWER;
-//
-//     var result = std.ArrayList(u8).init(allocator);
-//     errdefer result.deinit();
-//
-//     // Convert input bytes to big integer
-//     var value = try std.math.big.int.Managed.init(allocator);
-//     defer value.deinit();
-//
-//     try value.setBytes(input, .big);
-//
-//     // Handle zero case
-//     if (value.eqlZero()) {
-//         try result.append('0');
-//         return result.toOwnedSlice();
-//     }
-//
-//     // Convert to base36
-//     while (!value.eqlZero()) {
-//         const digit = try value.divFloor(&value, 36);
-//         try result.append(alphabet[digit]);
-//     }
-//
-//     // Reverse the result since we built it backwards
-//     std.mem.reverse(u8, result.items);
-//     return result.toOwnedSlice();
-// }
-//
-// pub fn decodeBase36(allocator: std.mem.Allocator, input: []const u8, upper: bool) ![]u8 {
-//     const ALPHABET_LOWER = "0123456789abcdefghijklmnopqrstuvwxyz";
-//     const ALPHABET_UPPER = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-//     const alphabet = if (upper) ALPHABET_UPPER else ALPHABET_LOWER;
-//
-//     var result = std.ArrayList(u8).init(allocator);
-//     errdefer result.deinit();
-//
-//     var value = try std.math.big.int.Managed.init(allocator);
-//     defer value.deinit();
-//
-//     for (input) |c| {
-//         const digit = std.mem.indexOfScalar(u8, alphabet, c) orelse return Error.InvalidBaseString;
-//         try value.mul(&value, 36);
-//         try value.add(&value, digit);
-//     }
-//
-//     const bytes = try value.toBytes(allocator, .big);
-//     try result.appendSlice(bytes);
-//
-//     return result.toOwnedSlice();
-// }
-//
-// fn encodeBase256Emoji(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
-//     const EMOJI_ALPHABET = "🚀🪐☄🛰🌌🌑🌒🌓🌔🌕🌖🌗🌘🌍🌏🌎🐉☀💻🖥💾💿😂❤😍🤣😊🙏💕😭😘👍😅👏😁🔥🥰💔💖💙😢🤔😆🙄💪😉☺👌🤗💜😔😎😇🌹🤦🎉💞✌✨🤷😱😌🌸🙌😋💗💚😏💛🙂💓🤩😄😀🖤😃💯🙈👇🎶😒🤭❣😜💋👀😪😑💥🙋😞😩😡🤪👊🥳😥🤤👉💃😳✋😚😝😴🌟😬🙃🍀🌷😻😓⭐✅🥺🌈😈🤘💦✔😣🏃💐☹🎊💘😠☝😕🌺🎂🌻😐🖕💝🙊😹🗣💫💀👑🎵🤞😛🔴😤🌼😫⭐🤙☕🏆🤫👈😮🙆🍻🍃🐶💁😲🌿🧡🎁⚡🌞🎈❌✊👋😰🤨😶🤝🚶💰🍓💢🤟🙁🚨💨🤬✈🎀🍺🤓😙💟🌱😖👶🥴▶➡❓💎💸⬇😨🌚🦋😷🕺⚠🙅😟😵👎🤲🤠🤧📌🔵💅🧐🐾🍒😗🤑🌊🤯🐷☎💧😯💆👆🎤🙇🍑❄🌴💣🐸💌📍🥀🤢👅💡💩👐📸👻🤐🤮🎼🥵🚩🍎🍊👼💍📣🥂";
-//
-//     var result = std.ArrayList(u8).init(allocator);
-//     errdefer result.deinit();
-//
-//     for (input) |byte| {
-//         const emoji = EMOJI_ALPHABET[byte];
-//         try result.appendSlice(emoji);
-//     }
-//
-//     return result.toOwnedSlice();
-// }
-
 const std = @import("std");
 
 pub const DecodeError = error{
@@ -337,6 +83,10 @@ pub const Base = enum {
             .Base36Upper => base36.encodeUpper(dest[code_str.len..], source),
             .Base58Flickr => base58.encodeFlickr(dest[code_str.len..], source),
             .Base58Btc => base58.encodeBtc(dest[code_str.len..], source),
+            .Base64 => std.base64.standard_no_pad.Encoder.encode(dest[code_str.len..], source),
+            .Base64Pad => std.base64.standard.Encoder.encode(dest[code_str.len..], source),
+            .Base64Url => std.base64.url_safe_no_pad.Encoder.encode(dest[code_str.len..], source),
+            .Base64UrlPad => std.base64.url_safe.Encoder.encode(dest[code_str.len..], source),
             else => unreachable,
             // Add other encodings
         };
@@ -365,6 +115,22 @@ pub const Base = enum {
             .Base36Upper => base36.decode(dest, source, base36.ALPHABET_UPPER),
             .Base58Flickr => base58.decodeFlickr(dest, source),
             .Base58Btc => base58.decodeBtc(dest, source),
+            .Base64 => blk: {
+                try std.base64.standard_no_pad.Decoder.decode(dest, source);
+                break :blk dest[0..try std.base64.standard_no_pad.Decoder.calcSizeForSlice(source)];
+            },
+            .Base64Pad => blk: {
+                try std.base64.standard.Decoder.decode(dest, source);
+                break :blk dest[0..try std.base64.standard.Decoder.calcSizeForSlice(source)];
+            },
+            .Base64Url => blk: {
+                try std.base64.url_safe_no_pad.Decoder.decode(dest, source);
+                break :blk dest[0..try std.base64.url_safe_no_pad.Decoder.calcSizeForSlice(source)];
+            },
+            .Base64UrlPad => blk: {
+                try std.base64.url_safe.Decoder.decode(dest, source);
+                break :blk dest[0..try std.base64.url_safe.Decoder.calcSizeForSlice(source)];
+            },
             else => unreachable,
             // Add other decodings
         };
@@ -1859,4 +1625,188 @@ test "Base.encode/decode base58" {
         const decoded = try Base.Base58Flickr.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
+}
+
+test "Base.encode/decode base64" {
+    const testing = std.testing;
+
+    // Test Base64 standard
+    {
+        var dest: [256]u8 = undefined;
+        const source = "yes mani !";
+        const encoded = Base.Base64.encode(dest[0..], source);
+        try testing.expectEqualStrings("meWVzIG1hbmkgIQ", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "meWVzIG1hbmkgIQ";
+        const decoded = try Base.Base64.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Base64.encode(dest[0..], source);
+        try testing.expectEqualStrings("mAHllcyBtYW5pICE", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "mAHllcyBtYW5pICE";
+        const decoded = try Base.Base64.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const encoded = Base.Base64.encode(dest[0..], source);
+        try testing.expectEqualStrings("mAAB5ZXMgbWFuaSAh", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "mAAB5ZXMgbWFuaSAh";
+        const decoded = try Base.Base64.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
+    }
+
+    // Test Base64Pad
+    {
+        var dest: [256]u8 = undefined;
+        const source = "yes mani !";
+        const encoded = Base.Base64Pad.encode(dest[0..], source);
+        try testing.expectEqualStrings("MeWVzIG1hbmkgIQ==", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "MeWVzIG1hbmkgIQ==";
+        const decoded = try Base.Base64Pad.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Base64Pad.encode(dest[0..], source);
+        try testing.expectEqualStrings("MAHllcyBtYW5pICE=", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "MAHllcyBtYW5pICE=";
+        const decoded = try Base.Base64Pad.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const encoded = Base.Base64Pad.encode(dest[0..], source);
+        try testing.expectEqualStrings("MAAB5ZXMgbWFuaSAh", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "MAAB5ZXMgbWFuaSAh";
+        const decoded = try Base.Base64Pad.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
+    }
+
+    // Test Base64Url
+    {
+        var dest: [256]u8 = undefined;
+        const source = "yes mani !";
+        const encoded = Base.Base64Url.encode(dest[0..], source);
+        try testing.expectEqualStrings("ueWVzIG1hbmkgIQ", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "ueWVzIG1hbmkgIQ";
+        const decoded = try Base.Base64Url.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Base64Url.encode(dest[0..], source);
+        try testing.expectEqualStrings("uAHllcyBtYW5pICE", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "uAHllcyBtYW5pICE";
+        const decoded = try Base.Base64Url.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const encoded = Base.Base64Url.encode(dest[0..], source);
+        try testing.expectEqualStrings("uAAB5ZXMgbWFuaSAh", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "uAAB5ZXMgbWFuaSAh";
+        const decoded = try Base.Base64Url.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
+    }
+
+    // Test Base64UrlPad
+    {
+        var dest: [256]u8 = undefined;
+        const source = "yes mani !";
+        const encoded = Base.Base64UrlPad.encode(dest[0..], source);
+        try testing.expectEqualStrings("UeWVzIG1hbmkgIQ==", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "UeWVzIG1hbmkgIQ==";
+        const decoded = try Base.Base64UrlPad.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Base64UrlPad.encode(dest[0..], source);
+        try testing.expectEqualStrings("UAHllcyBtYW5pICE=", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "UAHllcyBtYW5pICE=";
+        const decoded = try Base.Base64UrlPad.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const encoded = Base.Base64UrlPad.encode(dest[0..], source);
+        try testing.expectEqualStrings("UAAB5ZXMgbWFuaSAh", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "UAAB5ZXMgbWFuaSAh";
+        const decoded = try Base.Base64UrlPad.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
+    }
+
+    // Test Base256Emoji
+    // {
+    //     var dest: [1024]u8 = undefined;
+    //     const source = "yes mani !";
+    //     const encoded = Base.Base256Emoji.encode(dest[0..], source);
+    //     try testing.expectEqualStrings("🚀👍😅😊📍💜😊😘👍🤣😊🙏", encoded);
+    // }
 }
