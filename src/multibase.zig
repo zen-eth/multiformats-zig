@@ -648,6 +648,26 @@ pub const Base = enum {
     const base36 = struct {
         const ALPHABET_LOWER = "0123456789abcdefghijklmnopqrstuvwxyz";
         const ALPHABET_UPPER = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        const Vec = @Vector(16, u8);
+
+        // Lookup tables for faster decoding
+        const DECODE_TABLE_LOWER = blk: {
+            var table: [256]u8 = undefined;
+            for (&table) |*v| v.* = 0xFF;
+            for (0..36) |i| {
+                table[ALPHABET_LOWER[i]] = @truncate(i);
+            }
+            break :blk table;
+        };
+
+        const DECODE_TABLE_UPPER = blk: {
+            var table: [256]u8 = undefined;
+            for (&table) |*v| v.* = 0xFF;
+            for (0..36) |i| {
+                table[ALPHABET_UPPER[i]] = @truncate(i);
+            }
+            break :blk table;
+        };
 
         pub fn encodeLower(dest: []u8, source: []const u8) []const u8 {
             if (source.len == 0) {
@@ -656,19 +676,27 @@ pub const Base = enum {
             }
 
             var dest_index: usize = 0;
-            var num: [1024]u8 = undefined;
+            var num: [1024]u8 align(16) = undefined;
             var num_len: usize = 0;
 
-            // Handle leading zeros
+            // Count leading zeros using SIMD
+            const zeros: Vec = @splat(0);
             var leading_zeros: usize = 0;
+
+            while (leading_zeros + 16 <= source.len) {
+                const chunk = @as(Vec, source[leading_zeros..][0..16].*);
+                const is_zero = chunk == zeros;
+                const zero_count = @popCount(@as(u16, @bitCast(is_zero)));
+                if (zero_count != 16) break;
+                leading_zeros += 16;
+            }
+
             while (leading_zeros < source.len and source[leading_zeros] == 0) {
                 leading_zeros += 1;
             }
 
-            while (leading_zeros > 0) : (leading_zeros -= 1) {
-                dest[dest_index] = '0';
-                dest_index += 1;
-            }
+            @memset(dest[0..leading_zeros], '0');
+            dest_index += leading_zeros;
 
             // Convert bytes to base36
             for (source) |byte| {
@@ -700,19 +728,27 @@ pub const Base = enum {
             }
 
             var dest_index: usize = 0;
-            var num: [1024]u8 = undefined;
+            var num: [1024]u8 align(16) = undefined;
             var num_len: usize = 0;
 
-            // Handle leading zeros
+            // Count leading zeros using SIMD
+            const zeros: Vec = @splat(0);
             var leading_zeros: usize = 0;
+
+            while (leading_zeros + 16 <= source.len) {
+                const chunk = @as(Vec, source[leading_zeros..][0..16].*);
+                const is_zero = chunk == zeros;
+                const zero_count = @popCount(@as(u16, @bitCast(is_zero)));
+                if (zero_count != 16) break;
+                leading_zeros += 16;
+            }
+
             while (leading_zeros < source.len and source[leading_zeros] == 0) {
                 leading_zeros += 1;
             }
 
-            while (leading_zeros > 0) : (leading_zeros -= 1) {
-                dest[dest_index] = '0';
-                dest_index += 1;
-            }
+            @memset(dest[0..leading_zeros], '0');
+            dest_index += leading_zeros;
 
             // Convert bytes to base36
             for (source) |byte| {
@@ -738,28 +774,31 @@ pub const Base = enum {
         }
 
         pub fn decode(dest: []u8, source: []const u8, alphabet: []const u8) DecodeError![]const u8 {
-            if (source.len == 0) {
-                return dest[0..0];
-            }
+            if (source.len == 0) return dest[0..0];
+
+            const decode_table = if (alphabet.ptr == ALPHABET_LOWER.ptr)
+                DECODE_TABLE_LOWER
+            else
+                DECODE_TABLE_UPPER;
 
             var dest_index: usize = 0;
-            var num: [1024]u8 = undefined;
+            var num: [1024]u8 align(16) = undefined;
             var num_len: usize = 0;
 
-            // Handle leading zeros
+            // Count leading zeros
             var leading_zeros: usize = 0;
             while (leading_zeros < source.len and source[leading_zeros] == '0') {
                 leading_zeros += 1;
             }
 
-            while (leading_zeros > 0) : (leading_zeros -= 1) {
-                dest[dest_index] = 0;
-                dest_index += 1;
-            }
+            @memset(dest[0..leading_zeros], 0);
+            dest_index += leading_zeros;
 
-            // Convert base36 to bytes
-            for (source) |c| {
-                const value = indexOf(alphabet, c) orelse return DecodeError.InvalidChar;
+            // Convert base36 to bytes using lookup table
+            for (source[leading_zeros..]) |c| {
+                const value = decode_table[c];
+                if (value == 0xFF) return DecodeError.InvalidChar;
+
                 var carry: u16 = value;
                 var j: usize = 0;
                 while (j < num_len or carry > 0) : (j += 1) {
@@ -780,18 +819,31 @@ pub const Base = enum {
 
             return dest[0..dest_index];
         }
-
-        fn indexOf(alphabet: []const u8, c: u8) ?u8 {
-            for (alphabet, 0..) |char, i| {
-                if (char == c) return @truncate(i);
-            }
-            return null;
-        }
     };
 
     const base58 = struct {
         const ALPHABET_FLICKR = "123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ";
         const ALPHABET_BTC = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+        const Vec = @Vector(16, u8);
+
+        // Lookup tables for faster decoding
+        const DECODE_TABLE_BTC = blk: {
+            var table: [256]u8 = undefined;
+            for (&table) |*v| v.* = 0xFF;
+            for (0..58) |i| {
+                table[ALPHABET_BTC[i]] = @truncate(i);
+            }
+            break :blk table;
+        };
+
+        const DECODE_TABLE_FLICKR = blk: {
+            var table: [256]u8 = undefined;
+            for (&table) |*v| v.* = 0xFF;
+            for (0..58) |i| {
+                table[ALPHABET_FLICKR[i]] = @truncate(i);
+            }
+            break :blk table;
+        };
 
         pub fn encodeBtc(dest: []u8, source: []const u8) []const u8 {
             if (source.len == 0) {
@@ -800,19 +852,27 @@ pub const Base = enum {
             }
 
             var dest_index: usize = 0;
-            var num: [1024]u8 = undefined;
+            var num: [1024]u8 align(16) = undefined;
             var num_len: usize = 0;
 
-            // Handle leading zeros
+            // Count leading zeros using SIMD
+            const zeros: Vec = @splat(0);
             var leading_zeros: usize = 0;
+
+            while (leading_zeros + 16 <= source.len) {
+                const chunk = @as(Vec, source[leading_zeros..][0..16].*);
+                const is_zero = chunk == zeros;
+                const zero_count = @popCount(@as(u16, @bitCast(is_zero)));
+                if (zero_count != 16) break;
+                leading_zeros += 16;
+            }
+
             while (leading_zeros < source.len and source[leading_zeros] == 0) {
                 leading_zeros += 1;
             }
 
-            while (leading_zeros > 0) : (leading_zeros -= 1) {
-                dest[dest_index] = ALPHABET_BTC[0];
-                dest_index += 1;
-            }
+            @memset(dest[0..leading_zeros], ALPHABET_BTC[0]);
+            dest_index += leading_zeros;
 
             // Convert bytes to base58
             for (source) |byte| {
@@ -844,19 +904,27 @@ pub const Base = enum {
             }
 
             var dest_index: usize = 0;
-            var num: [1024]u8 = undefined;
+            var num: [1024]u8 align(16) = undefined;
             var num_len: usize = 0;
 
-            // Handle leading zeros
+            // Count leading zeros using SIMD
+            const zeros: Vec = @splat(0);
             var leading_zeros: usize = 0;
+
+            while (leading_zeros + 16 <= source.len) {
+                const chunk = @as(Vec, source[leading_zeros..][0..16].*);
+                const is_zero = chunk == zeros;
+                const zero_count = @popCount(@as(u16, @bitCast(is_zero)));
+                if (zero_count != 16) break;
+                leading_zeros += 16;
+            }
+
             while (leading_zeros < source.len and source[leading_zeros] == 0) {
                 leading_zeros += 1;
             }
 
-            while (leading_zeros > 0) : (leading_zeros -= 1) {
-                dest[dest_index] = ALPHABET_FLICKR[0];
-                dest_index += 1;
-            }
+            @memset(dest[0..leading_zeros], ALPHABET_FLICKR[0]);
+            dest_index += leading_zeros;
 
             // Convert bytes to base58
             for (source) |byte| {
@@ -882,28 +950,26 @@ pub const Base = enum {
         }
 
         pub fn decodeBtc(dest: []u8, source: []const u8) DecodeError![]const u8 {
-            if (source.len == 0) {
-                return dest[0..0];
-            }
+            if (source.len == 0) return dest[0..0];
 
             var dest_index: usize = 0;
-            var num: [1024]u8 = undefined;
+            var num: [1024]u8 align(16) = undefined;
             var num_len: usize = 0;
 
-            // Handle leading zeros
+            // Count leading zeros
             var leading_zeros: usize = 0;
             while (leading_zeros < source.len and source[leading_zeros] == ALPHABET_BTC[0]) {
                 leading_zeros += 1;
             }
 
-            while (leading_zeros > 0) : (leading_zeros -= 1) {
-                dest[dest_index] = 0;
-                dest_index += 1;
-            }
+            @memset(dest[0..leading_zeros], 0);
+            dest_index += leading_zeros;
 
-            // Convert base58 to bytes
-            for (source) |c| {
-                const value = indexOf(ALPHABET_BTC, c) orelse return DecodeError.InvalidChar;
+            // Convert base58 to bytes using lookup table
+            for (source[leading_zeros..]) |c| {
+                const value = DECODE_TABLE_BTC[c];
+                if (value == 0xFF) return DecodeError.InvalidChar;
+
                 var carry: u16 = value;
                 var j: usize = 0;
                 while (j < num_len or carry > 0) : (j += 1) {
@@ -926,28 +992,26 @@ pub const Base = enum {
         }
 
         pub fn decodeFlickr(dest: []u8, source: []const u8) DecodeError![]const u8 {
-            if (source.len == 0) {
-                return dest[0..0];
-            }
+            if (source.len == 0) return dest[0..0];
 
             var dest_index: usize = 0;
-            var num: [1024]u8 = undefined;
+            var num: [1024]u8 align(16) = undefined;
             var num_len: usize = 0;
 
-            // Handle leading zeros
+            // Count leading zeros
             var leading_zeros: usize = 0;
             while (leading_zeros < source.len and source[leading_zeros] == ALPHABET_FLICKR[0]) {
                 leading_zeros += 1;
             }
 
-            while (leading_zeros > 0) : (leading_zeros -= 1) {
-                dest[dest_index] = 0;
-                dest_index += 1;
-            }
+            @memset(dest[0..leading_zeros], 0);
+            dest_index += leading_zeros;
 
-            // Convert base58 to bytes
-            for (source) |c| {
-                const value = indexOf(ALPHABET_FLICKR, c) orelse return DecodeError.InvalidChar;
+            // Convert base58 to bytes using lookup table
+            for (source[leading_zeros..]) |c| {
+                const value = DECODE_TABLE_FLICKR[c];
+                if (value == 0xFF) return DecodeError.InvalidChar;
+
                 var carry: u16 = value;
                 var j: usize = 0;
                 while (j < num_len or carry > 0) : (j += 1) {
@@ -968,18 +1032,13 @@ pub const Base = enum {
 
             return dest[0..dest_index];
         }
-
-        fn indexOf(alphabet: []const u8, c: u8) ?u8 {
-            for (alphabet, 0..) |char, i| {
-                if (char == c) return @truncate(i);
-            }
-            return null;
-        }
     };
 
     const base256emoji = struct {
         const ALPHABET = "🚀🪐☄🛰🌌🌑🌒🌓🌔🌕🌖🌗🌘🌍🌏🌎🐉☀💻🖥💾💿😂❤😍🤣😊🙏💕😭😘👍😅👏😁🔥🥰💔💖💙😢🤔😆🙄💪😉☺👌🤗💜😔😎😇🌹🤦🎉💞✌✨🤷😱😌🌸🙌😋💗💚😏💛🙂💓🤩😄😀🖤😃💯🙈👇🎶😒🤭❣😜💋👀😪😑💥🙋😞😩😡🤪👊🥳😥🤤👉💃😳✋😚😝😴🌟😬🙃🍀🌷😻😓⭐✅🥺🌈😈🤘💦✔😣🏃💐☹🎊💘😠☝😕🌺🎂🌻😐🖕💝🙊😹🗣💫💀👑🎵🤞😛🔴😤🌼😫⚽🤙☕🏆🤫👈😮🙆🍻🍃🐶💁😲🌿🧡🎁⚡🌞🎈❌✊👋😰🤨😶🤝🚶💰🍓💢🤟🙁🚨💨🤬✈🎀🍺🤓😙💟🌱😖👶🥴▶➡❓💎💸⬇😨🌚🦋😷🕺⚠🙅😟😵👎🤲🤠🤧📌🔵💅🧐🐾🍒😗🤑🌊🤯🐷☎💧😯💆👆🎤🙇🍑❄🌴💣🐸💌📍🥀🤢👅💡💩👐📸👻🤐🤮🎼🥵🚩🍎🍊👼💍📣🥂";
+        const Vec = @Vector(16, u8);
 
+        // Keep existing lookup tables
         const EMOJI_POSITIONS = init: {
             var table: [256]usize = undefined;
             var pos: usize = 0;
@@ -993,15 +1052,28 @@ pub const Base = enum {
             break :init table;
         };
 
+        const EMOJI_LENGTHS = blk: {
+            var table: [256]u8 = undefined;
+            var pos: usize = 0;
+            var i: usize = 0;
+            while (i < ALPHABET.len) {
+                const len = std.unicode.utf8ByteSequenceLength(ALPHABET[i]) catch unreachable;
+                table[pos] = len; // Remove @truncate since len is already u8
+                pos += 1;
+                i += len;
+            }
+            break :blk table;
+        };
+
         const REVERSE_LOOKUP = blk: {
             @setEvalBranchQuota(10000);
             var table: [0x10FFFF]u8 = [_]u8{0xFF} ** 0x10FFFF;
-            var pos: usize = 0; // Changed from u8 to usize
+            var pos: usize = 0;
             var i: usize = 0;
             while (i < ALPHABET.len) {
                 const len = (std.unicode.utf8ByteSequenceLength(ALPHABET[i]) catch unreachable);
                 const codepoint = std.unicode.utf8Decode(ALPHABET[i..][0..@as(usize, len)]) catch unreachable;
-                table[codepoint] = @truncate(pos); // Truncate pos to u8 when assigning
+                table[codepoint] = @truncate(pos);
                 pos += 1;
                 i += @as(usize, len);
             }
@@ -1010,18 +1082,36 @@ pub const Base = enum {
 
         pub fn encode(dest: []u8, source: []const u8) []const u8 {
             var dest_index: usize = 0;
-            for (source) |byte| {
+            var i: usize = 0;
+
+            // Process 16 bytes at a time
+            while (i + 16 <= source.len) : (i += 16) {
+                const bytes = @as(Vec, source[i..][0..16].*);
+                inline for (0..16) |j| {
+                    const byte = bytes[j];
+                    const emoji_start = EMOJI_POSITIONS[byte];
+                    const emoji_len = EMOJI_LENGTHS[byte];
+                    @memcpy(dest[dest_index..][0..emoji_len], ALPHABET[emoji_start..][0..emoji_len]);
+                    dest_index += emoji_len;
+                }
+            }
+
+            // Handle remaining bytes
+            while (i < source.len) : (i += 1) {
+                const byte = source[i];
                 const emoji_start = EMOJI_POSITIONS[byte];
-                const emoji_len = @as(usize, std.unicode.utf8ByteSequenceLength(ALPHABET[emoji_start]) catch unreachable);
+                const emoji_len = EMOJI_LENGTHS[byte];
                 @memcpy(dest[dest_index..][0..emoji_len], ALPHABET[emoji_start..][0..emoji_len]);
                 dest_index += emoji_len;
             }
+
             return dest[0..dest_index];
         }
 
         pub fn decode(dest: []u8, source: []const u8) ![]const u8 {
             var dest_index: usize = 0;
             var i: usize = 0;
+
             while (i < source.len) {
                 const len = @as(usize, std.unicode.utf8ByteSequenceLength(source[i]) catch return error.InvalidBaseString);
                 const codepoint = std.unicode.utf8Decode(source[i..][0..len]) catch return error.InvalidBaseString;
@@ -1031,6 +1121,7 @@ pub const Base = enum {
                 dest_index += 1;
                 i += len;
             }
+
             return dest[0..dest_index];
         }
     };
