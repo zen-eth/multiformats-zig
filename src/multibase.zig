@@ -335,6 +335,8 @@ pub const Base = enum {
             .Base32Z => base32.encode(dest[code_str.len..], source, base32.ALPHABET_Z, false),
             .Base36Lower => base36.encodeLower(dest[code_str.len..], source),
             .Base36Upper => base36.encodeUpper(dest[code_str.len..], source),
+            .Base58Flickr => base58.encodeFlickr(dest[code_str.len..], source),
+            .Base58Btc => base58.encodeBtc(dest[code_str.len..], source),
             else => unreachable,
             // Add other encodings
         };
@@ -361,6 +363,8 @@ pub const Base = enum {
             .Base32Z => base32.decode(dest, source, base32.ALPHABET_Z),
             .Base36Lower => base36.decode(dest, source, base36.ALPHABET_LOWER),
             .Base36Upper => base36.decode(dest, source, base36.ALPHABET_UPPER),
+            .Base58Flickr => base58.decodeFlickr(dest, source),
+            .Base58Btc => base58.decodeBtc(dest, source),
             else => unreachable,
             // Add other decodings
         };
@@ -801,6 +805,194 @@ pub const Base = enum {
                 while (j < num_len or carry > 0) : (j += 1) {
                     if (j < num_len) {
                         carry += @as(u16, num[j]) * 36;
+                    }
+                    num[j] = @truncate(carry);
+                    carry >>= 8;
+                }
+                num_len = j;
+            }
+
+            var i: usize = num_len;
+            while (i > 0) : (i -= 1) {
+                dest[dest_index] = num[i - 1];
+                dest_index += 1;
+            }
+
+            return dest[0..dest_index];
+        }
+
+        fn indexOf(alphabet: []const u8, c: u8) ?u8 {
+            for (alphabet, 0..) |char, i| {
+                if (char == c) return @truncate(i);
+            }
+            return null;
+        }
+    };
+
+    const base58 = struct {
+        const ALPHABET_FLICKR = "123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ";
+        const ALPHABET_BTC = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+        pub fn encodeBtc(dest: []u8, source: []const u8) []const u8 {
+            if (source.len == 0) {
+                dest[0] = ALPHABET_BTC[0];
+                return dest[0..1];
+            }
+
+            var dest_index: usize = 0;
+            var num: [1024]u8 = undefined;
+            var num_len: usize = 0;
+
+            // Handle leading zeros
+            var leading_zeros: usize = 0;
+            while (leading_zeros < source.len and source[leading_zeros] == 0) {
+                leading_zeros += 1;
+            }
+
+            while (leading_zeros > 0) : (leading_zeros -= 1) {
+                dest[dest_index] = ALPHABET_BTC[0];
+                dest_index += 1;
+            }
+
+            // Convert bytes to base58
+            for (source) |byte| {
+                var carry: u16 = byte;
+                var j: usize = 0;
+                while (j < num_len or carry > 0) : (j += 1) {
+                    if (j < num_len) {
+                        carry += @as(u16, num[j]) << 8;
+                    }
+                    num[j] = @truncate(carry % 58);
+                    carry /= 58;
+                }
+                num_len = j;
+            }
+
+            var i: usize = num_len;
+            while (i > 0) : (i -= 1) {
+                dest[dest_index] = ALPHABET_BTC[num[i - 1]];
+                dest_index += 1;
+            }
+
+            return dest[0..dest_index];
+        }
+
+        pub fn encodeFlickr(dest: []u8, source: []const u8) []const u8 {
+            if (source.len == 0) {
+                dest[0] = ALPHABET_FLICKR[0];
+                return dest[0..1];
+            }
+
+            var dest_index: usize = 0;
+            var num: [1024]u8 = undefined;
+            var num_len: usize = 0;
+
+            // Handle leading zeros
+            var leading_zeros: usize = 0;
+            while (leading_zeros < source.len and source[leading_zeros] == 0) {
+                leading_zeros += 1;
+            }
+
+            while (leading_zeros > 0) : (leading_zeros -= 1) {
+                dest[dest_index] = ALPHABET_FLICKR[0];
+                dest_index += 1;
+            }
+
+            // Convert bytes to base58
+            for (source) |byte| {
+                var carry: u16 = byte;
+                var j: usize = 0;
+                while (j < num_len or carry > 0) : (j += 1) {
+                    if (j < num_len) {
+                        carry += @as(u16, num[j]) << 8;
+                    }
+                    num[j] = @truncate(carry % 58);
+                    carry /= 58;
+                }
+                num_len = j;
+            }
+
+            var i: usize = num_len;
+            while (i > 0) : (i -= 1) {
+                dest[dest_index] = ALPHABET_FLICKR[num[i - 1]];
+                dest_index += 1;
+            }
+
+            return dest[0..dest_index];
+        }
+
+        pub fn decodeBtc(dest: []u8, source: []const u8) DecodeError![]const u8 {
+            if (source.len == 0) {
+                return dest[0..0];
+            }
+
+            var dest_index: usize = 0;
+            var num: [1024]u8 = undefined;
+            var num_len: usize = 0;
+
+            // Handle leading zeros
+            var leading_zeros: usize = 0;
+            while (leading_zeros < source.len and source[leading_zeros] == ALPHABET_BTC[0]) {
+                leading_zeros += 1;
+            }
+
+            while (leading_zeros > 0) : (leading_zeros -= 1) {
+                dest[dest_index] = 0;
+                dest_index += 1;
+            }
+
+            // Convert base58 to bytes
+            for (source) |c| {
+                const value = indexOf(ALPHABET_BTC, c) orelse return DecodeError.InvalidChar;
+                var carry: u16 = value;
+                var j: usize = 0;
+                while (j < num_len or carry > 0) : (j += 1) {
+                    if (j < num_len) {
+                        carry += @as(u16, num[j]) * 58;
+                    }
+                    num[j] = @truncate(carry);
+                    carry >>= 8;
+                }
+                num_len = j;
+            }
+
+            var i: usize = num_len;
+            while (i > 0) : (i -= 1) {
+                dest[dest_index] = num[i - 1];
+                dest_index += 1;
+            }
+
+            return dest[0..dest_index];
+        }
+
+        pub fn decodeFlickr(dest: []u8, source: []const u8) DecodeError![]const u8 {
+            if (source.len == 0) {
+                return dest[0..0];
+            }
+
+            var dest_index: usize = 0;
+            var num: [1024]u8 = undefined;
+            var num_len: usize = 0;
+
+            // Handle leading zeros
+            var leading_zeros: usize = 0;
+            while (leading_zeros < source.len and source[leading_zeros] == ALPHABET_FLICKR[0]) {
+                leading_zeros += 1;
+            }
+
+            while (leading_zeros > 0) : (leading_zeros -= 1) {
+                dest[dest_index] = 0;
+                dest_index += 1;
+            }
+
+            // Convert base58 to bytes
+            for (source) |c| {
+                const value = indexOf(ALPHABET_FLICKR, c) orelse return DecodeError.InvalidChar;
+                var carry: u16 = value;
+                var j: usize = 0;
+                while (j < num_len or carry > 0) : (j += 1) {
+                    if (j < num_len) {
+                        carry += @as(u16, num[j]) * 58;
                     }
                     num[j] = @truncate(carry);
                     carry >>= 8;
@@ -1575,6 +1767,96 @@ test "Base.encode/decode base36" {
         var dest: [256]u8 = undefined;
         const source = "K002LCPZO5YIKIDYNFL";
         const decoded = try Base.Base36Upper.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
+    }
+}
+
+test "Base.encode/decode base58" {
+    const testing = std.testing;
+
+    // Test Base58Btc
+    {
+        var dest: [256]u8 = undefined;
+        const source = "yes mani !";
+        const encoded = Base.Base58Btc.encode(dest[0..], source);
+        try testing.expectEqualStrings("z7paNL19xttacUY", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "z7paNL19xttacUY";
+        const decoded = try Base.Base58Btc.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Base58Btc.encode(dest[0..], source);
+        try testing.expectEqualStrings("z17paNL19xttacUY", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "z17paNL19xttacUY";
+        const decoded = try Base.Base58Btc.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const encoded = Base.Base58Btc.encode(dest[0..], source);
+        try testing.expectEqualStrings("z117paNL19xttacUY", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "z117paNL19xttacUY";
+        const decoded = try Base.Base58Btc.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
+    }
+
+    // Test Base58Flickr
+    {
+        var dest: [256]u8 = undefined;
+        const source = "yes mani !";
+        const encoded = Base.Base58Flickr.encode(dest[0..], source);
+        try testing.expectEqualStrings("Z7Pznk19XTTzBtx", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "Z7Pznk19XTTzBtx";
+        const decoded = try Base.Base58Flickr.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Base58Flickr.encode(dest[0..], source);
+        try testing.expectEqualStrings("Z17Pznk19XTTzBtx", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "Z17Pznk19XTTzBtx";
+        const decoded = try Base.Base58Flickr.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const encoded = Base.Base58Flickr.encode(dest[0..], source);
+        try testing.expectEqualStrings("Z117Pznk19XTTzBtx", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "Z117Pznk19XTTzBtx";
+        const decoded = try Base.Base58Flickr.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 }
