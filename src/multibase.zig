@@ -333,6 +333,8 @@ pub const Base = enum {
             .Base32HexPadLower => base32.encode(dest[code_str.len..], source, base32.ALPHABET_HEX_LOWER, true),
             .Base32HexPadUpper => base32.encode(dest[code_str.len..], source, base32.ALPHABET_HEX_UPPER, true),
             .Base32Z => base32.encode(dest[code_str.len..], source, base32.ALPHABET_Z, false),
+            .Base36Lower => base36.encodeLower(dest[code_str.len..], source),
+            .Base36Upper => base36.encodeUpper(dest[code_str.len..], source),
             else => unreachable,
             // Add other encodings
         };
@@ -357,6 +359,8 @@ pub const Base = enum {
             .Base32HexPadLower => base32.decode(dest, source, base32.ALPHABET_HEX_LOWER),
             .Base32HexPadUpper => base32.decode(dest, source, base32.ALPHABET_HEX_UPPER),
             .Base32Z => base32.decode(dest, source, base32.ALPHABET_Z),
+            .Base36Lower => base36.decode(dest, source, base36.ALPHABET_LOWER),
+            .Base36Upper => base36.decode(dest, source, base36.ALPHABET_UPPER),
             else => unreachable,
             // Add other decodings
         };
@@ -664,6 +668,150 @@ pub const Base = enum {
                     dest[dest_index] = @truncate(bits >> bit_count);
                     dest_index += 1;
                 }
+            }
+
+            return dest[0..dest_index];
+        }
+
+        fn indexOf(alphabet: []const u8, c: u8) ?u8 {
+            for (alphabet, 0..) |char, i| {
+                if (char == c) return @truncate(i);
+            }
+            return null;
+        }
+    };
+
+    const base36 = struct {
+        const ALPHABET_LOWER = "0123456789abcdefghijklmnopqrstuvwxyz";
+        const ALPHABET_UPPER = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+        pub fn encodeLower(dest: []u8, source: []const u8) []const u8 {
+            if (source.len == 0) {
+                dest[0] = '0';
+                return dest[0..1];
+            }
+
+            var dest_index: usize = 0;
+            var num: [1024]u8 = undefined;
+            var num_len: usize = 0;
+
+            // Handle leading zeros
+            var leading_zeros: usize = 0;
+            while (leading_zeros < source.len and source[leading_zeros] == 0) {
+                leading_zeros += 1;
+            }
+
+            while (leading_zeros > 0) : (leading_zeros -= 1) {
+                dest[dest_index] = '0';
+                dest_index += 1;
+            }
+
+            // Convert bytes to base36
+            for (source) |byte| {
+                var carry: u16 = byte;
+                var j: usize = 0;
+                while (j < num_len or carry > 0) : (j += 1) {
+                    if (j < num_len) {
+                        carry += @as(u16, num[j]) << 8;
+                    }
+                    num[j] = @truncate(carry % 36);
+                    carry /= 36;
+                }
+                num_len = j;
+            }
+
+            var i: usize = num_len;
+            while (i > 0) : (i -= 1) {
+                dest[dest_index] = ALPHABET_LOWER[num[i - 1]];
+                dest_index += 1;
+            }
+
+            return dest[0..dest_index];
+        }
+
+        pub fn encodeUpper(dest: []u8, source: []const u8) []const u8 {
+            if (source.len == 0) {
+                dest[0] = '0';
+                return dest[0..1];
+            }
+
+            var dest_index: usize = 0;
+            var num: [1024]u8 = undefined;
+            var num_len: usize = 0;
+
+            // Handle leading zeros
+            var leading_zeros: usize = 0;
+            while (leading_zeros < source.len and source[leading_zeros] == 0) {
+                leading_zeros += 1;
+            }
+
+            while (leading_zeros > 0) : (leading_zeros -= 1) {
+                dest[dest_index] = '0';
+                dest_index += 1;
+            }
+
+            // Convert bytes to base36
+            for (source) |byte| {
+                var carry: u16 = byte;
+                var j: usize = 0;
+                while (j < num_len or carry > 0) : (j += 1) {
+                    if (j < num_len) {
+                        carry += @as(u16, num[j]) << 8;
+                    }
+                    num[j] = @truncate(carry % 36);
+                    carry /= 36;
+                }
+                num_len = j;
+            }
+
+            var i: usize = num_len;
+            while (i > 0) : (i -= 1) {
+                dest[dest_index] = ALPHABET_UPPER[num[i - 1]];
+                dest_index += 1;
+            }
+
+            return dest[0..dest_index];
+        }
+
+        pub fn decode(dest: []u8, source: []const u8, alphabet: []const u8) DecodeError![]const u8 {
+            if (source.len == 0) {
+                return dest[0..0];
+            }
+
+            var dest_index: usize = 0;
+            var num: [1024]u8 = undefined;
+            var num_len: usize = 0;
+
+            // Handle leading zeros
+            var leading_zeros: usize = 0;
+            while (leading_zeros < source.len and source[leading_zeros] == '0') {
+                leading_zeros += 1;
+            }
+
+            while (leading_zeros > 0) : (leading_zeros -= 1) {
+                dest[dest_index] = 0;
+                dest_index += 1;
+            }
+
+            // Convert base36 to bytes
+            for (source) |c| {
+                const value = indexOf(alphabet, c) orelse return DecodeError.InvalidChar;
+                var carry: u16 = value;
+                var j: usize = 0;
+                while (j < num_len or carry > 0) : (j += 1) {
+                    if (j < num_len) {
+                        carry += @as(u16, num[j]) * 36;
+                    }
+                    num[j] = @truncate(carry);
+                    carry >>= 8;
+                }
+                num_len = j;
+            }
+
+            var i: usize = num_len;
+            while (i > 0) : (i -= 1) {
+                dest[dest_index] = num[i - 1];
+                dest_index += 1;
             }
 
             return dest[0..dest_index];
@@ -1040,304 +1188,393 @@ test "Base.encode/decode base32" {
     }
 
     // Test Base32HexLower
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "yes mani !";
-    //     const encoded = Base.Base32HexLower.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("vcpn4v9g3y4v9g3yb", encoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "vcpn4v9g3y4v9g3yb";
-    //     const decoded = try Base.Base32HexLower.decode(dest[0..], source[1..]);
-    //     try testing.expectEqualStrings("yes mani !", decoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const  source = "\x00yes mani !";
-    //     const encoded = Base.Base32HexLower.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("vapn4v9g3y4v9g3yb", encoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "vapn4v9g3y4v9g3yb";
-    //     const decoded = try Base.Base32HexLower.decode(dest[0..], source[1..]);
-    //     try testing.expectEqualStrings("\x00yes mani !", decoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "\x00\x00yes mani !";
-    //     const encoded = Base.Base32HexLower.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("vapn4v9g3y4v9g3ybb", encoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "vapn4v9g3y4v9g3ybb";
-    //     const decoded = try Base.Base32HexLower.decode(dest[0..], source[1..]);
-    //     try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
-    // }
-    //
-    // // Test Base32HexUpper
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "yes mani !";
-    //     const encoded = Base.Base32HexUpper.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("VCPN4V9G3Y4V9G3YB", encoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "VCPN4V9G3Y4V9G3YB";
-    //     const decoded = try Base.Base32HexUpper.decode(dest[0..], source[1..]);
-    //     try testing.expectEqualStrings("yes mani !", decoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const  source = "\x00yes mani !";
-    //     const encoded = Base.Base32HexUpper.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("VAPN4V9G3Y4V9G3YB", encoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "VAPN4V9G3Y4V9G3YB";
-    //     const decoded = try Base.Base32HexUpper.decode(dest[0..], source[1..]);
-    //     try testing.expectEqualStrings("\x00yes mani !", decoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "\x00\x00yes mani !";
-    //     const encoded = Base.Base32HexUpper.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("VAPN4V9G3Y4V9G3YBB", encoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "VAPN4V9G3Y4V9G3YBB";
-    //     const decoded = try Base.Base32HexUpper.decode(dest[0..], source[1..]);
-    //     try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
-    // }
-    //
-    // // Test Base32PadLower
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "yes mani !";
-    //     const encoded = Base.Base32PadLower.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("bpfsxgidnmfxgsibb", encoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "bpfsxgidnmfxgsibb";
-    //     const decoded = try Base.Base32PadLower.decode(dest[0..], source[1..]);
-    //     try testing.expectEqualStrings("yes mani !", decoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const  source = "\x00yes mani !";
-    //     const encoded = Base.Base32PadLower.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("bab4wk4zanvqw42jaee", encoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "bab4wk4zanvqw42jaee";
-    //     const decoded = try Base.Base32PadLower.decode(dest[0..], source[1..]);
-    //     try testing.expectEqualStrings("\x00yes mani !", decoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "\x00\x00yes mani !";
-    //     const encoded = Base.Base32PadLower.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("baaahszltebwwc3tjeaqq", encoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "baaahszltebwwc3tjeaqq";
-    //     const decoded = try Base.Base32PadLower.decode(dest[0..], source[1..]);
-    //     try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
-    // }
-    //
-    // // Test Base32PadUpper
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "yes mani !";
-    //     const encoded = Base.Base32PadUpper.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("BPFSXGIDNMFXGSIBB", encoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "BPFSXGIDNMFXGSIBB";
-    //     const decoded = try Base.Base32PadUpper.decode(dest[0..], source[1..]);
-    //     try testing.expectEqualStrings("yes mani !", decoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const  source = "\x00yes mani !";
-    //     const encoded = Base.Base32PadUpper.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("BAB4WK4ZANVQW42JAEE", encoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "BAB4WK4ZANVQW42JAEE";
-    //     const decoded = try Base.Base32PadUpper.decode(dest[0..], source[1..]);
-    //     try testing.expectEqualStrings("\x00yes mani !", decoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "\x00\x00yes mani !";
-    //     const encoded = Base.Base32PadUpper.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("BAAAHSZLTEBWWC3TJEAQQ", encoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "BAAAHSZLTEBWWC3TJEAQQ";
-    //     const decoded = try Base.Base32PadUpper.decode(dest[0..], source[1..]);
-    //     try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
-    // }
-    //
-    // // Test Base32HexPadLower
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "yes mani !";
-    //     const encoded = Base.Base32HexPadLower.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("vcpn4v9g3y4v9g3yb", encoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "vcpn4v9g3y4v9g3yb";
-    //     const decoded = try Base.Base32HexPadLower.decode(dest[0..], source[1..]);
-    //     try testing.expectEqualStrings("yes mani !", decoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const  source = "\x00yes mani !";
-    //     const encoded = Base.Base32HexPadLower.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("vapn4v9g3y4v9g3yb", encoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "vapn4v9g3y4v9g3yb";
-    //     const decoded = try Base.Base32HexPadLower.decode(dest[0..], source[1..]);
-    //     try testing.expectEqualStrings("\x00yes mani !", decoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "\x00\x00yes mani !";
-    //     const encoded = Base.Base32HexPadLower.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("vapn4v9g3y4v9g3ybb", encoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "vapn4v9g3y4v9g3ybb";
-    //     const decoded = try Base.Base32HexPadLower.decode(dest[0..], source[1..]);
-    //     try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
-    // }
-    //
-    // // Test Base32HexPadUpper
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "yes mani !";
-    //     const encoded = Base.Base32HexPadUpper.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("VCPN4V9G3Y4V9G3YB", encoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "VCPN4V9G3Y4V9G3YB";
-    //     const decoded = try Base.Base32HexPadUpper.decode(dest[0..], source[1..]);
-    //     try testing.expectEqualStrings("yes mani !", decoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const  source = "\x00yes mani !";
-    //     const encoded = Base.Base32HexPadUpper.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("VAPN4V9G3Y4V9G3YB", encoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "VAPN4V9G3Y4V9G3YB";
-    //     const decoded = try Base.Base32HexPadUpper.decode(dest[0..], source[1..]);
-    //     try testing.expectEqualStrings("\x00yes mani !", decoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "\x00\x00yes mani !";
-    //     const encoded = Base.Base32HexPadUpper.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("VAPN4V9G3Y4V9G3YBB", encoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "VAPN4V9G3Y4V9G3YBB";
-    //     const decoded = try Base.Base32HexPadUpper.decode(dest[0..], source[1..]);
-    //     try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
-    // }
-    //
-    // // Test Base32Z
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "yes mani !";
-    //     const encoded = Base.Base32Z.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("b3pfsxgidnmfxgsibb", encoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "b3pfsxgidnmfxgsibb";
-    //     const decoded = try Base.Base32Z.decode(dest[0..], source[1..]);
-    //     try testing.expectEqualStrings("yes mani !", decoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "\x00yes mani !";
-    //     const encoded = Base.Base32Z.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("b3ab4wk4zanvqw42jaee", encoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "b3ab4wk4zanvqw42jaee";
-    //     const decoded = try Base.Base32Z.decode(dest[0..], source[1..]);
-    //     try testing.expectEqualStrings("\x00yes mani !", decoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "\x00\x00yes mani !";
-    //     const encoded = Base.Base32Z.encode(dest[0..], source);
-    //     try testing.expectEqualStrings("b3aaahszltebwwc3tjeaqq", encoded);
-    // }
-    //
-    // {
-    //     var dest: [256]u8 = undefined;
-    //     const source = "b3aaahszltebwwc3tjeaqq";
-    //     const decoded = try Base.Base32Z.decode(dest[0..], source[1..]);
-    //     try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
-    // }
+    {
+        var dest: [256]u8 = undefined;
+        const source = "yes mani !";
+        const encoded = Base.Base32HexLower.encode(dest[0..], source);
+        try testing.expectEqualStrings("vf5in683dc5n6i811", encoded);
+    }
 
+    {
+        var dest: [256]u8 = undefined;
+        const source = "vf5in683dc5n6i811";
+        const decoded = try Base.Base32HexLower.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Base32HexLower.encode(dest[0..], source);
+        try testing.expectEqualStrings("v01smasp0dlgmsq9044", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "v01smasp0dlgmsq9044";
+        const decoded = try Base.Base32HexLower.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const encoded = Base.Base32HexLower.encode(dest[0..], source);
+        try testing.expectEqualStrings("v0007ipbj41mm2rj940gg", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "v0007ipbj41mm2rj940gg";
+        const decoded = try Base.Base32HexLower.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
+    }
+
+    // Test Base32HexUpper
+    {
+        var dest: [256]u8 = undefined;
+        const source = "yes mani !";
+        const encoded = Base.Base32HexUpper.encode(dest[0..], source);
+        try testing.expectEqualStrings("VF5IN683DC5N6I811", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "VF5IN683DC5N6I811";
+        const decoded = try Base.Base32HexUpper.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Base32HexUpper.encode(dest[0..], source);
+        try testing.expectEqualStrings("V01SMASP0DLGMSQ9044", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "V01SMASP0DLGMSQ9044";
+        const decoded = try Base.Base32HexUpper.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const encoded = Base.Base32HexUpper.encode(dest[0..], source);
+        try testing.expectEqualStrings("V0007IPBJ41MM2RJ940GG", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "V0007IPBJ41MM2RJ940GG";
+        const decoded = try Base.Base32HexUpper.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
+    }
+
+    // Test Base32PadLower
+    {
+        var dest: [256]u8 = undefined;
+        const source = "yes mani !";
+        const encoded = Base.Base32PadLower.encode(dest[0..], source);
+        try testing.expectEqualStrings("cpfsxgidnmfxgsibb", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "cpfsxgidnmfxgsibb";
+        const decoded = try Base.Base32PadLower.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Base32PadLower.encode(dest[0..], source);
+        try testing.expectEqualStrings("cab4wk4zanvqw42jaee======", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "cab4wk4zanvqw42jaee======";
+        const decoded = try Base.Base32PadLower.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const encoded = Base.Base32PadLower.encode(dest[0..], source);
+        try testing.expectEqualStrings("caaahszltebwwc3tjeaqq====", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "caaahszltebwwc3tjeaqq====";
+        const decoded = try Base.Base32PadLower.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
+    }
+
+    // Test Base32PadUpper
+    {
+        var dest: [256]u8 = undefined;
+        const source = "yes mani !";
+        const encoded = Base.Base32PadUpper.encode(dest[0..], source);
+        try testing.expectEqualStrings("CPFSXGIDNMFXGSIBB", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "CPFSXGIDNMFXGSIBB";
+        const decoded = try Base.Base32PadUpper.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Base32PadUpper.encode(dest[0..], source);
+        try testing.expectEqualStrings("CAB4WK4ZANVQW42JAEE======", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "CAB4WK4ZANVQW42JAEE======";
+        const decoded = try Base.Base32PadUpper.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const encoded = Base.Base32PadUpper.encode(dest[0..], source);
+        try testing.expectEqualStrings("CAAAHSZLTEBWWC3TJEAQQ====", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "CAAAHSZLTEBWWC3TJEAQQ====";
+        const decoded = try Base.Base32PadUpper.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
+    }
+
+    // Test Base32HexPadLower
+    {
+        var dest: [256]u8 = undefined;
+        const source = "yes mani !";
+        const encoded = Base.Base32HexPadLower.encode(dest[0..], source);
+        try testing.expectEqualStrings("tf5in683dc5n6i811", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "tf5in683dc5n6i811";
+        const decoded = try Base.Base32HexPadLower.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Base32HexPadLower.encode(dest[0..], source);
+        try testing.expectEqualStrings("t01smasp0dlgmsq9044======", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "t01smasp0dlgmsq9044======";
+        const decoded = try Base.Base32HexPadLower.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const encoded = Base.Base32HexPadLower.encode(dest[0..], source);
+        try testing.expectEqualStrings("t0007ipbj41mm2rj940gg====", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "t0007ipbj41mm2rj940gg====";
+        const decoded = try Base.Base32HexPadLower.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
+    }
+
+    // Test Base32HexPadUpper
+    {
+        var dest: [256]u8 = undefined;
+        const source = "yes mani !";
+        const encoded = Base.Base32HexPadUpper.encode(dest[0..], source);
+        try testing.expectEqualStrings("TF5IN683DC5N6I811", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "TF5IN683DC5N6I811";
+        const decoded = try Base.Base32HexPadUpper.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Base32HexPadUpper.encode(dest[0..], source);
+        try testing.expectEqualStrings("T01SMASP0DLGMSQ9044======", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "T01SMASP0DLGMSQ9044======";
+        const decoded = try Base.Base32HexPadUpper.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const encoded = Base.Base32HexPadUpper.encode(dest[0..], source);
+        try testing.expectEqualStrings("T0007IPBJ41MM2RJ940GG====", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "T0007IPBJ41MM2RJ940GG====";
+        const decoded = try Base.Base32HexPadUpper.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
+    }
+
+    // Test Base32Z
+    {
+        var dest: [256]u8 = undefined;
+        const source = "yes mani !";
+        const encoded = Base.Base32Z.encode(dest[0..], source);
+        try testing.expectEqualStrings("hxf1zgedpcfzg1ebb", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "hxf1zgedpcfzg1ebb";
+        const decoded = try Base.Base32Z.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Base32Z.encode(dest[0..], source);
+        try testing.expectEqualStrings("hybhskh3ypiosh4jyrr", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "hybhskh3ypiosh4jyrr";
+        const decoded = try Base.Base32Z.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const encoded = Base.Base32Z.encode(dest[0..], source);
+        try testing.expectEqualStrings("hyyy813murbssn5ujryoo", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "hyyy813murbssn5ujryoo";
+        const decoded = try Base.Base32Z.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
+    }
+}
+
+test "Base.encode/decode base36" {
+    const testing = std.testing;
+
+    // Test Base36Lower
+    {
+        var dest: [256]u8 = undefined;
+        const source = "yes mani !";
+        const encoded = Base.Base36Lower.encode(dest[0..], source);
+        try testing.expectEqualStrings("k2lcpzo5yikidynfl", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "k2lcpzo5yikidynfl";
+        const decoded = try Base.Base36Lower.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Base36Lower.encode(dest[0..], source);
+        try testing.expectEqualStrings("k02lcpzo5yikidynfl", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "k02lcpzo5yikidynfl";
+        const decoded = try Base.Base36Lower.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const encoded = Base.Base36Lower.encode(dest[0..], source);
+        try testing.expectEqualStrings("k002lcpzo5yikidynfl", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "k002lcpzo5yikidynfl";
+        const decoded = try Base.Base36Lower.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
+    }
+
+    // Test Base36Upper
+    {
+        var dest: [256]u8 = undefined;
+        const source = "yes mani !";
+        const encoded = Base.Base36Upper.encode(dest[0..], source);
+        try testing.expectEqualStrings("K2LCPZO5YIKIDYNFL", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "K2LCPZO5YIKIDYNFL";
+        const decoded = try Base.Base36Upper.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00yes mani !";
+        const encoded = Base.Base36Upper.encode(dest[0..], source);
+        try testing.expectEqualStrings("K02LCPZO5YIKIDYNFL", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "K02LCPZO5YIKIDYNFL";
+        const decoded = try Base.Base36Upper.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00yes mani !", decoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "\x00\x00yes mani !";
+        const encoded = Base.Base36Upper.encode(dest[0..], source);
+        try testing.expectEqualStrings("K002LCPZO5YIKIDYNFL", encoded);
+    }
+
+    {
+        var dest: [256]u8 = undefined;
+        const source = "K002LCPZO5YIKIDYNFL";
+        const decoded = try Base.Base36Upper.decode(dest[0..], source[1..]);
+        try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
+    }
 }
