@@ -1,8 +1,119 @@
 const std = @import("std");
-const Multihash = @import("multihash.zig").Multihash;
 const Multicodec = @import("multicodec.zig").Multicodec;
+const varint = @import("unsigned_varint.zig");
 const testing = std.testing;
 
+/// Multihash is a wrapper around a digest and a code.
+pub fn Multihash(comptime S: usize) type {
+    return struct {
+        code: Multicodec,
+        size: u8,
+        digest: [S]u8,
+
+        const Self = @This();
+
+        pub fn wrap(code: Multicodec, input_digest: []const u8) !Self {
+            if (input_digest.len > S) {
+                return error.InvalidSize;
+            }
+
+            var digest = [_]u8{0} ** S;
+            @memcpy(digest[0..input_digest.len], input_digest[0..input_digest.len]); // Specify exact length
+
+            return Self{
+                .code = code,
+                .size = @intCast(input_digest.len),
+                .digest = digest,
+            };
+        }
+
+        pub fn getCode(self: Self) Multicodec {
+            return self.code;
+        }
+
+        pub fn getSize(self: Self) u8 {
+            return self.size;
+        }
+
+        pub fn getDigest(self: Self) []const u8 {
+            return self.digest[0..self.size];
+        }
+
+        pub fn truncate(self: Self, new_size: u8) Self {
+            return Self{
+                .code = self.code,
+                .size = @min(self.size, new_size),
+                .digest = self.digest,
+            };
+        }
+
+        pub fn resize(self: Self, comptime R: usize) !Multihash(R) {
+            if (self.size > R) {
+                return error.InvalidSize;
+            }
+
+            var new_digest = [_]u8{0} ** R;
+            @memcpy(new_digest[0..self.size], self.digest[0..self.size]);
+
+            return Multihash(R){
+                .code = self.code,
+                .size = self.size,
+                .digest = new_digest,
+            };
+        }
+
+        pub fn encodedLen(self: Self) usize {
+            var code_buf: [10]u8 = undefined;
+            const code_encoded = varint.encode(u64, self.code.getCode(), &code_buf);
+
+            var size_buf: [1]u8 = undefined;
+            const size_encoded = varint.encode(u8, self.size, &size_buf);
+
+            return code_encoded.len + size_encoded.len + self.size;
+        }
+
+        pub fn write(self: Self, writer: anytype) !usize {
+            var code_buf: [10]u8 = undefined;
+            const code_encoded = varint.encode(u64, self.code.getCode(), &code_buf);
+            try writer.writeAll(code_encoded);
+
+            var size_buf: [1]u8 = undefined;
+            const size_encoded = varint.encode(u8, self.size, &size_buf);
+            try writer.writeAll(size_encoded);
+
+            try writer.writeAll(self.digest[0..self.size]);
+
+            return code_encoded.len + size_encoded.len + self.size;
+        }
+
+        pub fn read(reader: anytype) !Self {
+            const code = try varint.decode_stream(reader, u64);
+            const size = try varint.decode_stream(reader, u8);
+
+            if (size > S) {
+                return error.InvalidSize;
+            }
+
+            var digest = [_]u8{0} ** S;
+            try reader.readNoEof(digest[0..size]);
+
+            return Self{
+                .code = try Multicodec.fromCode(code),
+                .size = size,
+                .digest = digest,
+            };
+        }
+
+        pub fn toBytes(self: Self, allocator: std.mem.Allocator) ![]u8 {
+            const bytes = try allocator.alloc(u8, self.encodedLen());
+            var stream = std.io.fixedBufferStream(bytes);
+            _ = try self.write(stream.writer());
+            return bytes;
+        }
+    };
+}
+
+/// MultihashDigest is a generic type that can be used to create a Multihash from a given input.
 pub fn MultihashDigest(comptime T: type, comptime alloc_size: usize) type {
     return struct {
         pub fn digest(code: T, input: []const u8) !Multihash(alloc_size) {
@@ -23,8 +134,15 @@ const Hasher = union(enum) {
     sha3_256: Sha3_256,
     sha3_384: Sha3_384,
     sha3_512: Sha3_512,
+    keccak_224: Keccak_224,
     keccak_256: Keccak_256,
+    keccak_384: Keccak_384,
     keccak_512: Keccak_512,
+    blake2b256: Blake2b256,
+    blake2b512: Blake2b512,
+    blake2s128: Blake2s128,
+    blake2s256: Blake2s256,
+    blake3: Blake3,
 
     pub fn init(code: MultihashCodecs) Hasher {
         return switch (code) {
@@ -34,8 +152,15 @@ const Hasher = union(enum) {
             .SHA3_256 => .{ .sha3_256 = Sha3_256.init() },
             .SHA3_384 => .{ .sha3_384 = Sha3_384.init() },
             .SHA3_512 => .{ .sha3_512 = Sha3_512.init() },
+            .KECCAK_224 => .{ .keccak_224 = Keccak_224.init() },
             .KECCAK_256 => .{ .keccak_256 = Keccak_256.init() },
+            .KECCAK_384 => .{ .keccak_384 = Keccak_384.init() },
             .KECCAK_512 => .{ .keccak_512 = Keccak_512.init() },
+            .BLAKE2B_256 => .{ .blake2b256 = Blake2b256.init() },
+            .BLAKE2B_512 => .{ .blake2b512 = Blake2b512.init() },
+            .BLAKE2S_128 => .{ .blake2s128 = Blake2s128.init() },
+            .BLAKE2S_256 => .{ .blake2s256 = Blake2s256.init() },
+            .BLAKE3 => .{ .blake3 = Blake3.init() },
         };
     }
 
@@ -46,6 +171,8 @@ const Hasher = union(enum) {
     }
 };
 
+/// MultihashCodecs is an enum that represents the different multihash codecs.
+/// It is used to implement the MultihashDigest trait for all multihash digests.
 pub const MultihashCodecs = enum(u64) {
     SHA2_256 = Multicodec.SHA2_256.getCode(),
     SHA2_512 = Multicodec.SHA2_512.getCode(),
@@ -55,17 +182,19 @@ pub const MultihashCodecs = enum(u64) {
     SHA3_512 = Multicodec.SHA3_512.getCode(),
     KECCAK_256 = Multicodec.KECCAK_256.getCode(),
     KECCAK_512 = Multicodec.KECCAK_512.getCode(),
-    // Keccak224 = 0x1a, // Not supported by std.crypto.hash.sha3
-    // Keccak384 = 0x1c, // Not supported by std.crypto.hash.sha3
-    // Blake2b256 = 0xb220,
-    // Blake2b512 = 0xb240,
-    // Blake2s128 = 0xb250,
-    // Blake2s256 = 0xb260,
-    // Blake3_256 = 0x1e,
+    KECCAK_224 = Multicodec.KECCAK_224.getCode(),
+    KECCAK_384 = Multicodec.KECCAK_384.getCode(),
+    BLAKE2B_256 = Multicodec.BLAKE2B_256.getCode(),
+    BLAKE2B_512 = Multicodec.BLAKE2B_512.getCode(),
+    BLAKE2S_128 = Multicodec.BLAKE2S_128.getCode(),
+    BLAKE2S_256 = Multicodec.BLAKE2S_256.getCode(),
+    BLAKE3 = Multicodec.BLAKE3.getCode(),
 
     pub usingnamespace MultihashDigest(@This(), 64);
 };
 
+/// Sha2_256 is a struct that represents the SHA2-256 hash algorithm.
+/// It is used to implement the MultihashDigest trait for the SHA2-256 hash algorithm.
 pub const Sha2_256 = struct {
     ctx: std.crypto.hash.sha2.Sha256,
 
@@ -82,6 +211,8 @@ pub const Sha2_256 = struct {
     }
 };
 
+/// Sha2_512 is a struct that represents the SHA2-512 hash algorithm.
+/// It is used to implement the MultihashDigest trait for the SHA2-512 hash algorithm.
 pub const Sha2_512 = struct {
     ctx: std.crypto.hash.sha2.Sha512,
 
@@ -98,6 +229,8 @@ pub const Sha2_512 = struct {
     }
 };
 
+/// Sha3_224 is a struct that represents the SHA3-224 hash algorithm.
+/// It is used to implement the MultihashDigest trait for the SHA3-224 hash algorithm.
 pub const Sha3_224 = struct {
     ctx: std.crypto.hash.sha3.Sha3_224,
 
@@ -116,6 +249,8 @@ pub const Sha3_224 = struct {
     }
 };
 
+/// Sha3_256 is a struct that represents the SHA3-256 hash algorithm.
+/// It is used to implement the MultihashDigest trait for the SHA3-256 hash algorithm.
 pub const Sha3_256 = struct {
     ctx: std.crypto.hash.sha3.Sha3_256,
 
@@ -134,6 +269,8 @@ pub const Sha3_256 = struct {
     }
 };
 
+/// Sha3_384 is a struct that represents the SHA3-384 hash algorithm.
+/// It is used to implement the MultihashDigest trait for the SHA3-384 hash algorithm.
 pub const Sha3_384 = struct {
     ctx: std.crypto.hash.sha3.Sha3_384,
 
@@ -152,6 +289,8 @@ pub const Sha3_384 = struct {
     }
 };
 
+/// Sha3_512 is a struct that represents the SHA3-512 hash algorithm.
+/// It is used to implement the MultihashDigest trait for the SHA3-512 hash algorithm.
 pub const Sha3_512 = struct {
     ctx: std.crypto.hash.sha3.Sha3_512,
 
@@ -170,6 +309,27 @@ pub const Sha3_512 = struct {
     }
 };
 
+/// Keccak_256 is a struct that represents the Keccak-256 hash algorithm.
+/// It is used to implement the MultihashDigest trait for the Keccak-256 hash algorithm.
+pub const Keccak_224 = struct {
+    ctx: std.crypto.hash.sha3.Keccak(1600, 224, 0x01, 24),
+    pub fn init() Keccak_224 {
+        return .{ .ctx = std.crypto.hash.sha3.Keccak(1600, 224, 0x01, 24).init(.{}) };
+    }
+
+    pub fn update(self: *Keccak_224, data: []const u8) !void {
+        self.ctx.update(data);
+    }
+
+    pub fn finalize(self: *Keccak_224) [28]u8 {
+        var out = [_]u8{0} ** 28;
+        self.ctx.final(&out);
+        return out;
+    }
+};
+
+/// Keccak_256 is a struct that represents the Keccak-256 hash algorithm.
+/// It is used to implement the MultihashDigest trait for the Keccak-256 hash algorithm.
 pub const Keccak_256 = struct {
     ctx: std.crypto.hash.sha3.Keccak256,
 
@@ -188,6 +348,27 @@ pub const Keccak_256 = struct {
     }
 };
 
+/// Keccak_384 is a struct that represents the Keccak-384 hash algorithm.
+/// It is used to implement the MultihashDigest trait for the Keccak-384 hash algorithm.
+pub const Keccak_384 = struct {
+    ctx: std.crypto.hash.sha3.Keccak(1600, 384, 0x01, 24),
+    pub fn init() Keccak_384 {
+        return .{ .ctx = std.crypto.hash.sha3.Keccak(1600, 384, 0x01, 24).init(.{}) };
+    }
+
+    pub fn update(self: *Keccak_384, data: []const u8) !void {
+        self.ctx.update(data);
+    }
+
+    pub fn finalize(self: *Keccak_384) [48]u8 {
+        var out = [_]u8{0} ** 48;
+        self.ctx.final(&out);
+        return out;
+    }
+};
+
+/// Keccak_512 is a struct that represents the Keccak-512 hash algorithm.
+/// It is used to implement the MultihashDigest trait for the Keccak-512 hash algorithm.
 pub const Keccak_512 = struct {
     ctx: std.crypto.hash.sha3.Keccak512,
 
@@ -206,6 +387,8 @@ pub const Keccak_512 = struct {
     }
 };
 
+/// Blake2b256 is a struct that represents the Blake2b-256 hash algorithm.
+/// It is used to implement the MultihashDigest trait for the Blake2b-256 hash algorithm.
 pub const Blake2b256 = struct {
     ctx: std.crypto.hash.blake2.Blake2b256,
     pub fn init() Blake2b256 {
@@ -216,9 +399,137 @@ pub const Blake2b256 = struct {
         self.ctx.update(data);
     }
     pub fn finalize(self: *Blake2b256) [32]u8 {
-        return self.ctx.finalResult();
+        var out = [_]u8{0} ** 32;
+        self.ctx.final(&out);
+        return out;
     }
 };
+
+/// Blake2b512 is a struct that represents the Blake2b-512 hash algorithm.
+/// It is used to implement the MultihashDigest trait for the Blake2b-512 hash algorithm.
+pub const Blake2b512 = struct {
+    ctx: std.crypto.hash.blake2.Blake2b512,
+    pub fn init() Blake2b512 {
+        return .{ .ctx = std.crypto.hash.blake2.Blake2b512.init(.{}) };
+    }
+
+    pub fn update(self: *Blake2b512, data: []const u8) !void {
+        self.ctx.update(data);
+    }
+    pub fn finalize(self: *Blake2b512) [64]u8 {
+        var out = [_]u8{0} ** 64;
+        self.ctx.final(&out);
+        return out;
+    }
+};
+
+/// Blake2s128 is a struct that represents the Blake2s-128 hash algorithm.
+/// It is used to implement the MultihashDigest trait for the Blake2s-128 hash algorithm.
+pub const Blake2s128 = struct {
+    ctx: std.crypto.hash.blake2.Blake2s128,
+    pub fn init() Blake2s128 {
+        return .{ .ctx = std.crypto.hash.blake2.Blake2s128.init(.{}) };
+    }
+
+    pub fn update(self: *Blake2s128, data: []const u8) !void {
+        self.ctx.update(data);
+    }
+    pub fn finalize(self: *Blake2s128) [16]u8 {
+        var out = [_]u8{0} ** 16;
+        self.ctx.final(&out);
+        return out;
+    }
+};
+
+/// Blake2s256 is a struct that represents the Blake2s-256 hash algorithm.
+/// It is used to implement the MultihashDigest trait for the Blake2s-256 hash algorithm.
+pub const Blake2s256 = struct {
+    ctx: std.crypto.hash.blake2.Blake2s256,
+    pub fn init() Blake2s256 {
+        return .{ .ctx = std.crypto.hash.blake2.Blake2s256.init(.{}) };
+    }
+
+    pub fn update(self: *Blake2s256, data: []const u8) !void {
+        self.ctx.update(data);
+    }
+    pub fn finalize(self: *Blake2s256) [32]u8 {
+        var out = [_]u8{0} ** 32;
+        self.ctx.final(&out);
+        return out;
+    }
+};
+
+/// Blake3 is a struct that represents the Blake3 hash algorithm.
+/// It is used to implement the MultihashDigest trait for the Blake3 hash algorithm.
+pub const Blake3 = struct {
+    ctx: std.crypto.hash.Blake3,
+    pub fn init() Blake3 {
+        return .{ .ctx = std.crypto.hash.Blake3.init(.{}) };
+    }
+
+    pub fn update(self: *Blake3, data: []const u8) !void {
+        self.ctx.update(data);
+    }
+    pub fn finalize(self: *Blake3) [64]u8 {
+        var out = [_]u8{0} ** 64;
+        self.ctx.final(&out);
+        return out;
+    }
+};
+
+test "basic multihash operations" {
+    const expected_digest = [_]u8{
+        0xB9, 0x4D, 0x27, 0xB9, 0x93, 0x4D, 0x3E, 0x08,
+        0xA5, 0x2E, 0x52, 0xD7, 0xDA, 0x7D, 0xAB, 0xFA,
+        0xC4, 0x84, 0xEF, 0xE3, 0x7A, 0x53, 0x80, 0xEE,
+        0x90, 0x88, 0xF7, 0xAC, 0xE2, 0xEF, 0xCD, 0xE9,
+    };
+
+    var mh = try Multihash(32).wrap(Multicodec.SHA2_256, &expected_digest);
+    try testing.expectEqual(mh.getCode(), Multicodec.SHA2_256);
+    try testing.expectEqual(mh.getSize(), expected_digest.len);
+    try testing.expectEqualSlices(u8, mh.getDigest(), &expected_digest);
+}
+test "multihash resize" {
+    const input = "test data";
+    var mh = try Multihash(32).wrap(Multicodec.CIDV1, input);
+
+    // Resize up
+    var larger = try mh.resize(64);
+    try testing.expectEqual(larger.getSize(), input.len);
+    try testing.expectEqualSlices(u8, larger.getDigest(), input);
+
+    // Resize down should fail
+    try testing.expectError(error.InvalidSize, mh.resize(4));
+}
+
+test "multihash serialization" {
+    const expected_bytes = [_]u8{ 0x12, 0x0a, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+    var mh = try Multihash(32).wrap(Multicodec.SHA2_256, &[_]u8{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 });
+
+    var buf: [100]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buf);
+    const written = try mh.write(fbs.writer());
+    try testing.expectEqual(written, expected_bytes.len);
+    try testing.expectEqualSlices(u8, buf[0..written], &expected_bytes);
+}
+
+test "multihash deserialization" {
+    const input = [_]u8{ 0x12, 0x0a, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+    var fbs = std.io.fixedBufferStream(&input);
+    var mh = try Multihash(32).read(fbs.reader());
+
+    try testing.expectEqual(mh.getCode().getCode(), 0x12);
+    try testing.expectEqual(mh.getSize(), 10);
+    try testing.expectEqualSlices(u8, mh.getDigest(), input[2..]);
+}
+
+test "multihash truncate" {
+    var mh = try Multihash(32).wrap(Multicodec.CIDV1, "hello world");
+    const truncated = mh.truncate(5);
+    try testing.expectEqual(truncated.getSize(), 5);
+    try testing.expectEqualSlices(u8, truncated.getDigest(), "hello");
+}
 
 test "sha256 hash operations" {
     const input = "hello world";
@@ -296,6 +607,19 @@ test "sha3_512 hash operations" {
     try testing.expectEqualSlices(u8, &out, hash.getDigest());
 }
 
+test "keccak_224 hash operations" {
+    const input = "hello world";
+    const hash = try MultihashCodecs.KECCAK_224.digest(input);
+    try testing.expectEqual(@as(u64, 0x1a), hash.code.getCode());
+    try testing.expectEqual(@as(usize, 28), hash.getSize());
+
+    var hash1 = std.crypto.hash.sha3.Keccak(1600, 224, 0x01, 24).init(.{});
+    hash1.update(input);
+    var out = [_]u8{0} ** 28;
+    hash1.final(&out);
+    try testing.expectEqualSlices(u8, &out, hash.getDigest());
+}
+
 test "keccak_256 hash operations" {
     const input = "hello world";
     const hash = try MultihashCodecs.KECCAK_256.digest(input);
@@ -309,6 +633,19 @@ test "keccak_256 hash operations" {
     try testing.expectEqualSlices(u8, &out, hash.getDigest());
 }
 
+test "keccak_384 hash operations" {
+    const input = "hello world";
+    const hash = try MultihashCodecs.KECCAK_384.digest(input);
+    try testing.expectEqual(@as(u64, 0x1c), hash.code.getCode());
+    try testing.expectEqual(@as(usize, 48), hash.getSize());
+
+    var hash1 = std.crypto.hash.sha3.Keccak(1600, 384, 0x01, 24).init(.{});
+    hash1.update(input);
+    var out = [_]u8{0} ** 48;
+    hash1.final(&out);
+    try testing.expectEqualSlices(u8, &out, hash.getDigest());
+}
+
 test "keccak_512 hash operations" {
     const input = "hello world";
     const hash = try MultihashCodecs.KECCAK_512.digest(input);
@@ -316,6 +653,71 @@ test "keccak_512 hash operations" {
     try testing.expectEqual(@as(usize, 64), hash.getSize());
 
     var hash1 = std.crypto.hash.sha3.Keccak512.init(.{});
+    hash1.update(input);
+    var out = [_]u8{0} ** 64;
+    hash1.final(&out);
+    try testing.expectEqualSlices(u8, &out, hash.getDigest());
+}
+
+test "blake2b_256 hash operations" {
+    const input = "hello world";
+    const hash = try MultihashCodecs.BLAKE2B_256.digest(input);
+    try testing.expectEqual(@as(u64, 0xb220), hash.code.getCode());
+    try testing.expectEqual(@as(usize, 32), hash.getSize());
+
+    var hash1 = std.crypto.hash.blake2.Blake2b256.init(.{});
+    hash1.update(input);
+    var out = [_]u8{0} ** 32;
+    hash1.final(&out);
+    try testing.expectEqualSlices(u8, &out, hash.getDigest());
+}
+
+test "blake2b_512 hash operations" {
+    const input = "hello world";
+    const hash = try MultihashCodecs.BLAKE2B_512.digest(input);
+    try testing.expectEqual(@as(u64, 0xb240), hash.code.getCode());
+    try testing.expectEqual(@as(usize, 64), hash.getSize());
+
+    var hash1 = std.crypto.hash.blake2.Blake2b512.init(.{});
+    hash1.update(input);
+    var out = [_]u8{0} ** 64;
+    hash1.final(&out);
+    try testing.expectEqualSlices(u8, &out, hash.getDigest());
+}
+
+test "blake2s_128 hash operations" {
+    const input = "hello world";
+    const hash = try MultihashCodecs.BLAKE2S_128.digest(input);
+    try testing.expectEqual(@as(u64, 0xb250), hash.code.getCode());
+    try testing.expectEqual(@as(usize, 16), hash.getSize());
+
+    var hash1 = std.crypto.hash.blake2.Blake2s128.init(.{});
+    hash1.update(input);
+    var out = [_]u8{0} ** 16;
+    hash1.final(&out);
+    try testing.expectEqualSlices(u8, &out, hash.getDigest());
+}
+
+test "blake2s_256 hash operations" {
+    const input = "hello world";
+    const hash = try MultihashCodecs.BLAKE2S_256.digest(input);
+    try testing.expectEqual(@as(u64, 0xb260), hash.code.getCode());
+    try testing.expectEqual(@as(usize, 32), hash.getSize());
+
+    var hash1 = std.crypto.hash.blake2.Blake2s256.init(.{});
+    hash1.update(input);
+    var out = [_]u8{0} ** 32;
+    hash1.final(&out);
+    try testing.expectEqualSlices(u8, &out, hash.getDigest());
+}
+
+test "blake3 hash operations" {
+    const input = "hello world";
+    const hash = try MultihashCodecs.BLAKE3.digest(input);
+    try testing.expectEqual(@as(u64, 0x1e), hash.code.getCode());
+    try testing.expectEqual(@as(usize, 64), hash.getSize());
+
+    var hash1 = std.crypto.hash.Blake3.init(.{});
     hash1.update(input);
     var out = [_]u8{0} ** 64;
     hash1.final(&out);

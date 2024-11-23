@@ -1,11 +1,16 @@
 const std = @import("std");
 
+/// DecodeError represents an error that occurred during decoding a multibase string.
 pub const DecodeError = error{
     InvalidChar,
     InvalidBaseString,
 };
 
-pub const Base = enum {
+/// MultiBaseCodec represents a multibase encoding.
+/// It is used to decode a multibase string into a byte slice.
+/// It is used to encode a byte slice into a multibase string.
+/// It is used to get the code of a base.
+pub const MultiBaseCodec = enum {
     Identity,
     Base2,
     Base8,
@@ -31,7 +36,9 @@ pub const Base = enum {
     Base64UrlPad,
     Base256Emoji,
 
-    pub fn code(self: Base) []const u8 {
+    /// Returns the code of the multibase encoding.
+    /// The code is a byte slice that represents the multibase encoding.
+    pub fn code(self: MultiBaseCodec) []const u8 {
         return switch (self) {
             .Identity => "\x00",
             .Base2 => "0",
@@ -60,7 +67,10 @@ pub const Base = enum {
         };
     }
 
-    pub fn encode(self: Base, dest: []u8, source: []const u8) []const u8 {
+    /// Encodes a byte slice into a multibase string.
+    /// The destination buffer must be large enough to hold the encoded string.
+    /// Returns the encoded multibase string.
+    pub fn encode(self: MultiBaseCodec, dest: []u8, source: []const u8) []const u8 {
         const code_str = self.code();
         @memcpy(dest[0..code_str.len], code_str);
 
@@ -94,7 +104,10 @@ pub const Base = enum {
         return dest[0 .. code_str.len + encoded.len];
     }
 
-    pub fn decode(self: Base, dest: []u8, source: []const u8) ![]const u8 {
+    /// Decodes a multibase string into a byte slice.
+    /// The destination buffer must be large enough to hold the decoded byte slice.
+    /// Returns the decoded byte slice.
+    pub fn decode(self: MultiBaseCodec, dest: []u8, source: []const u8) ![]const u8 {
         return switch (self) {
             .Identity => identity.decode(dest, source),
             .Base2 => base2.decode(dest, source),
@@ -1132,42 +1145,42 @@ test "Base.encode/decode base2" {
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base2.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base2.encode(dest[0..], source);
         try testing.expectEqualStrings("0000000000000000001111001011001010111001100100000011011010110000101101110011010010010000000100001", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "0000000000000000001111001011001010111001100100000011011010110000101101110011010010010000000100001";
-        const decoded = try Base.Base2.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base2.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base2.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base2.encode(dest[0..], source);
         try testing.expectEqualStrings("00000000001111001011001010111001100100000011011010110000101101110011010010010000000100001", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "00000000001111001011001010111001100100000011011010110000101101110011010010010000000100001";
-        const decoded = try Base.Base2.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base2.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base2.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base2.encode(dest[0..], source);
         try testing.expectEqualStrings("001111001011001010111001100100000011011010110000101101110011010010010000000100001", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "001111001011001010111001100100000011011010110000101101110011010010010000000100001";
-        const decoded = try Base.Base2.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base2.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 }
@@ -1178,42 +1191,42 @@ test "Base.encode/decode identity" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Identity.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Identity.encode(dest[0..], source);
         try testing.expectEqualStrings("\x00yes mani !", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const decoded = try Base.Identity.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Identity.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Identity.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Identity.encode(dest[0..], source);
         try testing.expectEqualStrings("\x00\x00yes mani !", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const decoded = try Base.Identity.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Identity.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Identity.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Identity.encode(dest[0..], source);
         try testing.expectEqualStrings("\x00\x00\x00yes mani !", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00\x00yes mani !";
-        const decoded = try Base.Identity.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Identity.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 }
@@ -1223,42 +1236,42 @@ test "Base.encode/decode base8" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base8.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base8.encode(dest[0..], source);
         try testing.expectEqualStrings("7362625631006654133464440102", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "7362625631006654133464440102";
-        const decoded = try Base.Base8.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base8.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base8.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base8.encode(dest[0..], source);
         try testing.expectEqualStrings("7000745453462015530267151100204", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "7000745453462015530267151100204";
-        const decoded = try Base.Base8.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base8.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base8.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base8.encode(dest[0..], source);
         try testing.expectEqualStrings("700000171312714403326055632220041", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "700000171312714403326055632220041";
-        const decoded = try Base.Base8.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base8.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 }
@@ -1269,42 +1282,42 @@ test "Base.encode/decode base10" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base10.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base10.encode(dest[0..], source);
         try testing.expectEqualStrings("9573277761329450583662625", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "9573277761329450583662625";
-        const decoded = try Base.Base10.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base10.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base10.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base10.encode(dest[0..], source);
         try testing.expectEqualStrings("90573277761329450583662625", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "90573277761329450583662625";
-        const decoded = try Base.Base10.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base10.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base10.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base10.encode(dest[0..], source);
         try testing.expectEqualStrings("900573277761329450583662625", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "900573277761329450583662625";
-        const decoded = try Base.Base10.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base10.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 }
@@ -1316,42 +1329,42 @@ test "Base.encode/decode base16" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base16Lower.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base16Lower.encode(dest[0..], source);
         try testing.expectEqualStrings("f796573206d616e692021", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "f796573206d616e692021";
-        const decoded = try Base.Base16Lower.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base16Lower.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base16Lower.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base16Lower.encode(dest[0..], source);
         try testing.expectEqualStrings("f00796573206d616e692021", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "f00796573206d616e692021";
-        const decoded = try Base.Base16Lower.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base16Lower.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base16Lower.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base16Lower.encode(dest[0..], source);
         try testing.expectEqualStrings("f0000796573206d616e692021", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "f0000796573206d616e692021";
-        const decoded = try Base.Base16Lower.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base16Lower.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 
@@ -1359,42 +1372,42 @@ test "Base.encode/decode base16" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base16Upper.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base16Upper.encode(dest[0..], source);
         try testing.expectEqualStrings("F796573206D616E692021", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "F796573206D616E692021";
-        const decoded = try Base.Base16Upper.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base16Upper.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base16Upper.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base16Upper.encode(dest[0..], source);
         try testing.expectEqualStrings("F00796573206D616E692021", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "F00796573206D616E692021";
-        const decoded = try Base.Base16Upper.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base16Upper.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base16Upper.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base16Upper.encode(dest[0..], source);
         try testing.expectEqualStrings("F0000796573206D616E692021", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "F0000796573206D616E692021";
-        const decoded = try Base.Base16Upper.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base16Upper.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 }
@@ -1406,42 +1419,42 @@ test "Base.encode/decode base32" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base32Lower.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32Lower.encode(dest[0..], source);
         try testing.expectEqualStrings("bpfsxgidnmfxgsibb", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "bpfsxgidnmfxgsibb";
-        const decoded = try Base.Base32Lower.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32Lower.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base32Lower.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32Lower.encode(dest[0..], source);
         try testing.expectEqualStrings("bab4wk4zanvqw42jaee", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "bab4wk4zanvqw42jaee";
-        const decoded = try Base.Base32Lower.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32Lower.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base32Lower.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32Lower.encode(dest[0..], source);
         try testing.expectEqualStrings("baaahszltebwwc3tjeaqq", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "baaahszltebwwc3tjeaqq";
-        const decoded = try Base.Base32Lower.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32Lower.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 
@@ -1449,42 +1462,42 @@ test "Base.encode/decode base32" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base32Upper.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32Upper.encode(dest[0..], source);
         try testing.expectEqualStrings("BPFSXGIDNMFXGSIBB", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "BPFSXGIDNMFXGSIBB";
-        const decoded = try Base.Base32Upper.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32Upper.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base32Upper.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32Upper.encode(dest[0..], source);
         try testing.expectEqualStrings("BAB4WK4ZANVQW42JAEE", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "BAB4WK4ZANVQW42JAEE";
-        const decoded = try Base.Base32Upper.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32Upper.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base32Upper.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32Upper.encode(dest[0..], source);
         try testing.expectEqualStrings("BAAAHSZLTEBWWC3TJEAQQ", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "BAAAHSZLTEBWWC3TJEAQQ";
-        const decoded = try Base.Base32Upper.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32Upper.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 
@@ -1492,42 +1505,42 @@ test "Base.encode/decode base32" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base32HexLower.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32HexLower.encode(dest[0..], source);
         try testing.expectEqualStrings("vf5in683dc5n6i811", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "vf5in683dc5n6i811";
-        const decoded = try Base.Base32HexLower.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32HexLower.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base32HexLower.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32HexLower.encode(dest[0..], source);
         try testing.expectEqualStrings("v01smasp0dlgmsq9044", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "v01smasp0dlgmsq9044";
-        const decoded = try Base.Base32HexLower.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32HexLower.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base32HexLower.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32HexLower.encode(dest[0..], source);
         try testing.expectEqualStrings("v0007ipbj41mm2rj940gg", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "v0007ipbj41mm2rj940gg";
-        const decoded = try Base.Base32HexLower.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32HexLower.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 
@@ -1535,42 +1548,42 @@ test "Base.encode/decode base32" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base32HexUpper.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32HexUpper.encode(dest[0..], source);
         try testing.expectEqualStrings("VF5IN683DC5N6I811", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "VF5IN683DC5N6I811";
-        const decoded = try Base.Base32HexUpper.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32HexUpper.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base32HexUpper.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32HexUpper.encode(dest[0..], source);
         try testing.expectEqualStrings("V01SMASP0DLGMSQ9044", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "V01SMASP0DLGMSQ9044";
-        const decoded = try Base.Base32HexUpper.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32HexUpper.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base32HexUpper.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32HexUpper.encode(dest[0..], source);
         try testing.expectEqualStrings("V0007IPBJ41MM2RJ940GG", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "V0007IPBJ41MM2RJ940GG";
-        const decoded = try Base.Base32HexUpper.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32HexUpper.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 
@@ -1578,42 +1591,42 @@ test "Base.encode/decode base32" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base32PadLower.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32PadLower.encode(dest[0..], source);
         try testing.expectEqualStrings("cpfsxgidnmfxgsibb", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "cpfsxgidnmfxgsibb";
-        const decoded = try Base.Base32PadLower.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32PadLower.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base32PadLower.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32PadLower.encode(dest[0..], source);
         try testing.expectEqualStrings("cab4wk4zanvqw42jaee======", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "cab4wk4zanvqw42jaee======";
-        const decoded = try Base.Base32PadLower.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32PadLower.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base32PadLower.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32PadLower.encode(dest[0..], source);
         try testing.expectEqualStrings("caaahszltebwwc3tjeaqq====", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "caaahszltebwwc3tjeaqq====";
-        const decoded = try Base.Base32PadLower.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32PadLower.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 
@@ -1621,42 +1634,42 @@ test "Base.encode/decode base32" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base32PadUpper.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32PadUpper.encode(dest[0..], source);
         try testing.expectEqualStrings("CPFSXGIDNMFXGSIBB", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "CPFSXGIDNMFXGSIBB";
-        const decoded = try Base.Base32PadUpper.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32PadUpper.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base32PadUpper.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32PadUpper.encode(dest[0..], source);
         try testing.expectEqualStrings("CAB4WK4ZANVQW42JAEE======", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "CAB4WK4ZANVQW42JAEE======";
-        const decoded = try Base.Base32PadUpper.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32PadUpper.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base32PadUpper.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32PadUpper.encode(dest[0..], source);
         try testing.expectEqualStrings("CAAAHSZLTEBWWC3TJEAQQ====", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "CAAAHSZLTEBWWC3TJEAQQ====";
-        const decoded = try Base.Base32PadUpper.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32PadUpper.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 
@@ -1664,42 +1677,42 @@ test "Base.encode/decode base32" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base32HexPadLower.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32HexPadLower.encode(dest[0..], source);
         try testing.expectEqualStrings("tf5in683dc5n6i811", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "tf5in683dc5n6i811";
-        const decoded = try Base.Base32HexPadLower.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32HexPadLower.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base32HexPadLower.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32HexPadLower.encode(dest[0..], source);
         try testing.expectEqualStrings("t01smasp0dlgmsq9044======", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "t01smasp0dlgmsq9044======";
-        const decoded = try Base.Base32HexPadLower.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32HexPadLower.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base32HexPadLower.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32HexPadLower.encode(dest[0..], source);
         try testing.expectEqualStrings("t0007ipbj41mm2rj940gg====", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "t0007ipbj41mm2rj940gg====";
-        const decoded = try Base.Base32HexPadLower.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32HexPadLower.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 
@@ -1707,42 +1720,42 @@ test "Base.encode/decode base32" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base32HexPadUpper.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32HexPadUpper.encode(dest[0..], source);
         try testing.expectEqualStrings("TF5IN683DC5N6I811", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "TF5IN683DC5N6I811";
-        const decoded = try Base.Base32HexPadUpper.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32HexPadUpper.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base32HexPadUpper.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32HexPadUpper.encode(dest[0..], source);
         try testing.expectEqualStrings("T01SMASP0DLGMSQ9044======", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "T01SMASP0DLGMSQ9044======";
-        const decoded = try Base.Base32HexPadUpper.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32HexPadUpper.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base32HexPadUpper.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32HexPadUpper.encode(dest[0..], source);
         try testing.expectEqualStrings("T0007IPBJ41MM2RJ940GG====", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "T0007IPBJ41MM2RJ940GG====";
-        const decoded = try Base.Base32HexPadUpper.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32HexPadUpper.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 
@@ -1750,42 +1763,42 @@ test "Base.encode/decode base32" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base32Z.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32Z.encode(dest[0..], source);
         try testing.expectEqualStrings("hxf1zgedpcfzg1ebb", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "hxf1zgedpcfzg1ebb";
-        const decoded = try Base.Base32Z.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32Z.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base32Z.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32Z.encode(dest[0..], source);
         try testing.expectEqualStrings("hybhskh3ypiosh4jyrr", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "hybhskh3ypiosh4jyrr";
-        const decoded = try Base.Base32Z.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32Z.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base32Z.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base32Z.encode(dest[0..], source);
         try testing.expectEqualStrings("hyyy813murbssn5ujryoo", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "hyyy813murbssn5ujryoo";
-        const decoded = try Base.Base32Z.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base32Z.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 }
@@ -1797,42 +1810,42 @@ test "Base.encode/decode base36" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base36Lower.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base36Lower.encode(dest[0..], source);
         try testing.expectEqualStrings("k2lcpzo5yikidynfl", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "k2lcpzo5yikidynfl";
-        const decoded = try Base.Base36Lower.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base36Lower.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base36Lower.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base36Lower.encode(dest[0..], source);
         try testing.expectEqualStrings("k02lcpzo5yikidynfl", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "k02lcpzo5yikidynfl";
-        const decoded = try Base.Base36Lower.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base36Lower.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base36Lower.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base36Lower.encode(dest[0..], source);
         try testing.expectEqualStrings("k002lcpzo5yikidynfl", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "k002lcpzo5yikidynfl";
-        const decoded = try Base.Base36Lower.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base36Lower.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 
@@ -1840,42 +1853,42 @@ test "Base.encode/decode base36" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base36Upper.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base36Upper.encode(dest[0..], source);
         try testing.expectEqualStrings("K2LCPZO5YIKIDYNFL", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "K2LCPZO5YIKIDYNFL";
-        const decoded = try Base.Base36Upper.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base36Upper.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base36Upper.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base36Upper.encode(dest[0..], source);
         try testing.expectEqualStrings("K02LCPZO5YIKIDYNFL", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "K02LCPZO5YIKIDYNFL";
-        const decoded = try Base.Base36Upper.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base36Upper.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base36Upper.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base36Upper.encode(dest[0..], source);
         try testing.expectEqualStrings("K002LCPZO5YIKIDYNFL", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "K002LCPZO5YIKIDYNFL";
-        const decoded = try Base.Base36Upper.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base36Upper.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 }
@@ -1887,42 +1900,42 @@ test "Base.encode/decode base58" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base58Btc.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base58Btc.encode(dest[0..], source);
         try testing.expectEqualStrings("z7paNL19xttacUY", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "z7paNL19xttacUY";
-        const decoded = try Base.Base58Btc.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base58Btc.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base58Btc.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base58Btc.encode(dest[0..], source);
         try testing.expectEqualStrings("z17paNL19xttacUY", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "z17paNL19xttacUY";
-        const decoded = try Base.Base58Btc.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base58Btc.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base58Btc.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base58Btc.encode(dest[0..], source);
         try testing.expectEqualStrings("z117paNL19xttacUY", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "z117paNL19xttacUY";
-        const decoded = try Base.Base58Btc.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base58Btc.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 
@@ -1930,42 +1943,42 @@ test "Base.encode/decode base58" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base58Flickr.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base58Flickr.encode(dest[0..], source);
         try testing.expectEqualStrings("Z7Pznk19XTTzBtx", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "Z7Pznk19XTTzBtx";
-        const decoded = try Base.Base58Flickr.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base58Flickr.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base58Flickr.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base58Flickr.encode(dest[0..], source);
         try testing.expectEqualStrings("Z17Pznk19XTTzBtx", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "Z17Pznk19XTTzBtx";
-        const decoded = try Base.Base58Flickr.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base58Flickr.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base58Flickr.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base58Flickr.encode(dest[0..], source);
         try testing.expectEqualStrings("Z117Pznk19XTTzBtx", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "Z117Pznk19XTTzBtx";
-        const decoded = try Base.Base58Flickr.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base58Flickr.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 }
@@ -1977,42 +1990,42 @@ test "Base.encode/decode base64" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base64.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base64.encode(dest[0..], source);
         try testing.expectEqualStrings("meWVzIG1hbmkgIQ", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "meWVzIG1hbmkgIQ";
-        const decoded = try Base.Base64.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base64.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base64.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base64.encode(dest[0..], source);
         try testing.expectEqualStrings("mAHllcyBtYW5pICE", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "mAHllcyBtYW5pICE";
-        const decoded = try Base.Base64.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base64.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base64.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base64.encode(dest[0..], source);
         try testing.expectEqualStrings("mAAB5ZXMgbWFuaSAh", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "mAAB5ZXMgbWFuaSAh";
-        const decoded = try Base.Base64.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base64.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 
@@ -2020,42 +2033,42 @@ test "Base.encode/decode base64" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base64Pad.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base64Pad.encode(dest[0..], source);
         try testing.expectEqualStrings("MeWVzIG1hbmkgIQ==", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "MeWVzIG1hbmkgIQ==";
-        const decoded = try Base.Base64Pad.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base64Pad.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base64Pad.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base64Pad.encode(dest[0..], source);
         try testing.expectEqualStrings("MAHllcyBtYW5pICE=", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "MAHllcyBtYW5pICE=";
-        const decoded = try Base.Base64Pad.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base64Pad.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base64Pad.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base64Pad.encode(dest[0..], source);
         try testing.expectEqualStrings("MAAB5ZXMgbWFuaSAh", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "MAAB5ZXMgbWFuaSAh";
-        const decoded = try Base.Base64Pad.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base64Pad.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 
@@ -2063,42 +2076,42 @@ test "Base.encode/decode base64" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base64Url.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base64Url.encode(dest[0..], source);
         try testing.expectEqualStrings("ueWVzIG1hbmkgIQ", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "ueWVzIG1hbmkgIQ";
-        const decoded = try Base.Base64Url.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base64Url.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base64Url.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base64Url.encode(dest[0..], source);
         try testing.expectEqualStrings("uAHllcyBtYW5pICE", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "uAHllcyBtYW5pICE";
-        const decoded = try Base.Base64Url.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base64Url.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base64Url.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base64Url.encode(dest[0..], source);
         try testing.expectEqualStrings("uAAB5ZXMgbWFuaSAh", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "uAAB5ZXMgbWFuaSAh";
-        const decoded = try Base.Base64Url.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base64Url.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 
@@ -2106,42 +2119,42 @@ test "Base.encode/decode base64" {
     {
         var dest: [256]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base64UrlPad.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base64UrlPad.encode(dest[0..], source);
         try testing.expectEqualStrings("UeWVzIG1hbmkgIQ==", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "UeWVzIG1hbmkgIQ==";
-        const decoded = try Base.Base64UrlPad.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base64UrlPad.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base64UrlPad.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base64UrlPad.encode(dest[0..], source);
         try testing.expectEqualStrings("UAHllcyBtYW5pICE=", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "UAHllcyBtYW5pICE=";
-        const decoded = try Base.Base64UrlPad.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base64UrlPad.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base64UrlPad.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base64UrlPad.encode(dest[0..], source);
         try testing.expectEqualStrings("UAAB5ZXMgbWFuaSAh", encoded);
     }
 
     {
         var dest: [256]u8 = undefined;
         const source = "UAAB5ZXMgbWFuaSAh";
-        const decoded = try Base.Base64UrlPad.decode(dest[0..], source[1..]);
+        const decoded = try MultiBaseCodec.Base64UrlPad.decode(dest[0..], source[1..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 }
@@ -2153,14 +2166,14 @@ test "Base.encode/decode base256emoji" {
     {
         var dest: [1024]u8 = undefined;
         const source = "yes mani !";
-        const encoded = Base.Base256Emoji.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base256Emoji.encode(dest[0..], source);
         try testing.expectEqualStrings("🚀🏃✋🌈😅🌷🤤😻🌟😅👏", encoded);
     }
 
     {
         var dest: [1024]u8 = undefined;
         const source = "🚀🏃✋🌈😅🌷🤤😻🌟😅👏";
-        const decoded = try Base.Base256Emoji.decode(dest[0..], source[4..]);
+        const decoded = try MultiBaseCodec.Base256Emoji.decode(dest[0..], source[4..]);
         try testing.expectEqualStrings("yes mani !", decoded);
     }
 
@@ -2168,14 +2181,14 @@ test "Base.encode/decode base256emoji" {
     {
         var dest: [1024]u8 = undefined;
         const source = "\x00yes mani !";
-        const encoded = Base.Base256Emoji.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base256Emoji.encode(dest[0..], source);
         try testing.expectEqualStrings("🚀🚀🏃✋🌈😅🌷🤤😻🌟😅👏", encoded);
     }
 
     {
         var dest: [1024]u8 = undefined;
         const source = "🚀🚀🏃✋🌈😅🌷🤤😻🌟😅👏";
-        const decoded = try Base.Base256Emoji.decode(dest[0..], source[4..]);
+        const decoded = try MultiBaseCodec.Base256Emoji.decode(dest[0..], source[4..]);
         try testing.expectEqualStrings("\x00yes mani !", decoded);
     }
 
@@ -2183,14 +2196,14 @@ test "Base.encode/decode base256emoji" {
     {
         var dest: [1024]u8 = undefined;
         const source = "\x00\x00yes mani !";
-        const encoded = Base.Base256Emoji.encode(dest[0..], source);
+        const encoded = MultiBaseCodec.Base256Emoji.encode(dest[0..], source);
         try testing.expectEqualStrings("🚀🚀🚀🏃✋🌈😅🌷🤤😻🌟😅👏", encoded);
     }
 
     {
         var dest: [1024]u8 = undefined;
         const source = "🚀🚀🚀🏃✋🌈😅🌷🤤😻🌟😅👏";
-        const decoded = try Base.Base256Emoji.decode(dest[0..], source[4..]);
+        const decoded = try MultiBaseCodec.Base256Emoji.decode(dest[0..], source[4..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
     }
 }
