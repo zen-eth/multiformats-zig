@@ -56,18 +56,22 @@ pub fn main() !void {
             allocator.free(codec.description);
         }
     }
-    // Generate tag file
-    {
-        const tag_file = try fs.cwd().createFile("src/multicodec_tag.zig", .{});
-        defer tag_file.close();
 
-        const writer = tag_file.writer();
+    // Generate combined file
+    {
+        const combined_file = try fs.cwd().createFile("src/multicodec.zig", .{});
+        defer combined_file.close();
+
+        const writer = combined_file.writer();
         try writer.writeAll(
             \\// Generated file - DO NOT EDIT
+            \\
+            \\const std = @import("std");
             \\
             \\pub const MulticodecTag = enum {
             \\
         );
+
         // Write unique sorted tags
         var tags = std.StringHashMap(void).init(allocator);
         defer tags.deinit();
@@ -98,24 +102,10 @@ pub fn main() !void {
         for (tag_keys.items) |tag| {
             try writer.print("    {s},\n", .{tag});
         }
-        try writer.writeAll("};\n");
-    }
+        try writer.writeAll("};\n\n");
 
-    // Generate enum file
-    {
-        const enum_file = try fs.cwd().createFile("src/multicodec.zig", .{});
-        defer enum_file.close();
-
-        const writer = enum_file.writer();
-        try writer.writeAll(
-            \\// Generated file - DO NOT EDIT
-            \\
-            \\const std = @import("std");
-            \\const MulticodecTag = @import("multicodec_tag.zig").MulticodecTag;
-            \\
-            \\pub const Multicodec = enum(u64) {
-            \\
-        );
+        // Write Multicodec enum
+        try writer.writeAll("pub const Multicodec = enum(u64) {\n");
 
         // Write enum fields
         for (codecs.items) |codec| {
@@ -163,18 +153,6 @@ pub fn main() !void {
         }
         try writer.writeAll("            else => error.UnknownMulticodec,\n        };\n    }\n\n");
 
-        // // Write getTag function
-        // try writer.writeAll("    pub fn getTag(self: Multicodec) MulticodecTag {\n        return switch (self) {\n");
-        // for (codecs.items) |codec| {
-        //     const name = try std.ascii.allocUpperString(allocator, codec.name);
-        //     defer allocator.free(name);
-        //     for (name) |*c| {
-        //         if (c.* == '-') c.* = '_';
-        //     }
-        //     const trimmed_tag = std.mem.trim(u8, codec.tag, " ");
-        //     try writer.print("            .{s} => .{s},\n", .{ name, trimmed_tag });
-        // }
-        // try writer.writeAll("        };\n    }\n};\n");
         // Write getTag function
         try writer.writeAll("    pub fn getTag(self: Multicodec) MulticodecTag {\n        return switch (self) {\n");
         for (codecs.items) |codec| {
@@ -189,15 +167,6 @@ pub fn main() !void {
         try writer.writeAll("        };\n    }\n\n");
 
         // Write getCode function
-        try writer.writeAll("    pub fn getCode(self: Multicodec) u64 {\n        return switch (self) {\n");
-        for (codecs.items) |codec| {
-            const name = try std.ascii.allocUpperString(allocator, codec.name);
-            defer allocator.free(name);
-            for (name) |*c| {
-                if (c.* == '-') c.* = '_';
-            }
-            try writer.print("            .{s} => 0x{x:0>2},\n", .{ name, @as(u64, @intCast(codec.code)) });
-        }
-        try writer.writeAll("        };\n    }\n};\n");
+        try writer.writeAll("    pub fn getCode(self: Multicodec) u64 {\n        return @intFromEnum(self);\n    }\n};\n");
     }
 }
