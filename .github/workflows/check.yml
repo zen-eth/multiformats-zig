@@ -14,6 +14,12 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        arch: [x86_64, aarch64, i386]
+        include:
+          - os: ubuntu-latest
+            arch: arm
+          - os: ubuntu-latest
+            arch: riscv64
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -23,26 +29,51 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ~/zig
-          key: ${{ runner.os }}-zig-${{ env.ZIG_VERSION }}
+          key: ${{ runner.os }}-${{ matrix.arch }}-zig-${{ env.ZIG_VERSION }}
 
       - name: Install Zig
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
-          case ${{ runner.os }} in
-            Linux)
+          case "${{ runner.os }}-${{ matrix.arch }}" in
+            Linux-x86_64)
               wget https://ziglang.org/builds/zig-linux-x86_64-${{ env.ZIG_VERSION }}.tar.xz
               tar -xf zig-linux-x86_64-${{ env.ZIG_VERSION }}.tar.xz
               mv zig-linux-x86_64-${{ env.ZIG_VERSION }} ~/zig
               ;;
-            macOS)
+            Linux-aarch64)
+              wget https://ziglang.org/builds/zig-linux-aarch64-${{ env.ZIG_VERSION }}.tar.xz
+              tar -xf zig-linux-aarch64-${{ env.ZIG_VERSION }}.tar.xz
+              mv zig-linux-aarch64-${{ env.ZIG_VERSION }} ~/zig
+              ;;
+            Linux-arm)
+              wget https://ziglang.org/builds/zig-linux-armv7a-${{ env.ZIG_VERSION }}.tar.xz
+              tar -xf zig-linux-armv7a-${{ env.ZIG_VERSION }}.tar.xz
+              mv zig-linux-armv7a-${{ env.ZIG_VERSION }} ~/zig
+              ;;
+            Linux-riscv64)
+              wget https://ziglang.org/builds/zig-linux-riscv64-${{ env.ZIG_VERSION }}.tar.xz
+              tar -xf zig-linux-riscv64-${{ env.ZIG_VERSION }}.tar.xz
+              mv zig-linux-riscv64-${{ env.ZIG_VERSION }} ~/zig
+              ;;
+            macOS-x86_64)
               wget https://ziglang.org/builds/zig-macos-x86_64-${{ env.ZIG_VERSION }}.tar.xz
               tar -xf zig-macos-x86_64-${{ env.ZIG_VERSION }}.tar.xz
               mv zig-macos-x86_64-${{ env.ZIG_VERSION }} ~/zig
               ;;
-            Windows)
+            macOS-aarch64)
+              wget https://ziglang.org/builds/zig-macos-aarch64-${{ env.ZIG_VERSION }}.tar.xz
+              tar -xf zig-macos-aarch64-${{ env.ZIG_VERSION }}.tar.xz
+              mv zig-macos-aarch64-${{ env.ZIG_VERSION }} ~/zig
+              ;;
+            Windows-x86_64)
               curl -L https://ziglang.org/builds/zig-windows-x86_64-${{ env.ZIG_VERSION }}.zip -o zig.zip
               7z x zig.zip
               mv zig-windows-x86_64-${{ env.ZIG_VERSION }} ~/zig
+              ;;
+            Windows-aarch64)
+              curl -L https://ziglang.org/builds/zig-windows-aarch64-${{ env.ZIG_VERSION }}.zip -o zig.zip
+              7z x zig.zip
+              mv zig-windows-aarch64-${{ env.ZIG_VERSION }} ~/zig
               ;;
           esac
         shell: bash
@@ -57,15 +88,15 @@ jobs:
           path: |
             zig-cache
             ~/.cache/zig
-          key: ${{ runner.os }}-zig-build-${{ hashFiles('**/*.zig') }}
+          key: ${{ runner.os }}-${{ matrix.arch }}-zig-build-${{ hashFiles('**/*.zig') }}
           restore-keys: |
-            ${{ runner.os }}-zig-build-
+            ${{ runner.os }}-${{ matrix.arch }}-zig-build-
 
       - name: Formatting
         run: zig fmt --check --color on .
 
       - name: Unit testing
-        run: zig build test --summary all
+        run: zig build test -Dtarget=${{ matrix.arch }}-${{ runner.os }} --summary all
 
       - name: Building
-        run: zig build -Doptimize=ReleaseFast
+        run: zig build -Dtarget=${{ matrix.arch }}-${{ runner.os }} -Doptimize=ReleaseFast
