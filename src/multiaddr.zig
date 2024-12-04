@@ -32,6 +32,7 @@ const ONION3: u32 = 445;
 const QUIC: u32 = 460;
 const WS: u32 = 477;
 const WSS: u32 = 478;
+
 pub const Protocol = union(enum) {
     Dccp: u16,
     Dns: []const u8,
@@ -43,7 +44,7 @@ pub const Protocol = union(enum) {
     Ip4: std.net.Ip4Address,
     Ip6: std.net.Ip6Address,
     Tcp: u16,
-    Udp: u16,  // Added UDP protocol
+    Udp: u16, // Added UDP protocol
 
     pub fn tag(self: Protocol) []const u8 {
         return switch (self) {
@@ -81,7 +82,8 @@ pub const Protocol = union(enum) {
             },
             else => Error.UnknownProtocolId,
         };
-    }    pub fn writeBytes(self: Protocol, writer: anytype) !void {
+    }
+    pub fn writeBytes(self: Protocol, writer: anytype) !void {
         switch (self) {
             .Ip4 => |addr| {
                 _ = try uvarint.encode_stream(writer, u32, IP4);
@@ -145,8 +147,38 @@ pub const Multiaddr = struct {
         };
     }
 
-    pub fn deinit(self: *Multiaddr) void {
+    pub fn withCapacity(allocator: std.mem.Allocator, capacity: usize) Multiaddr {
+        var ma = Multiaddr.init(allocator);
+        ma.bytes.ensureTotalCapacity(capacity) catch unreachable;
+        return ma;
+    }
+
+    // Create from slice of protocols
+    pub fn fromProtocols(allocator: std.mem.Allocator, protocols: []const Protocol) !Multiaddr {
+        var ma = Multiaddr.init(allocator);
+        for (protocols) |p| {
+            try ma.push(p);
+        }
+        return ma;
+    }
+
+    pub fn deinit(self: *const Multiaddr) void {
         self.bytes.deinit();
+    }
+
+    pub fn iterator(self: Multiaddr) ProtocolIterator {
+        return .{ .bytes = self.bytes.items };
+    }
+
+    pub fn protocolStack(self: Multiaddr) ProtocolStackIterator {
+        return .{ .iter = self.iterator() };
+    }
+
+    pub fn with(self: Multiaddr, allocator: std.mem.Allocator, p: Protocol) !Multiaddr {
+        var new_ma = Multiaddr.init(allocator);
+        try new_ma.bytes.appendSlice(self.bytes.items);
+        try new_ma.push(p);
+        return new_ma;
     }
 
     pub fn len(self: Multiaddr) usize {
@@ -157,10 +189,8 @@ pub const Multiaddr = struct {
         return self.bytes.items.len == 0;
     }
 
-    pub fn toSlice(self: Multiaddr, allocator: std.mem.Allocator) ![]u8 {
-        const vec = try allocator.alloc(u8, self.bytes.items.len);
-        @memcpy(vec, self.bytes.items);
-        return vec;
+    pub fn toSlice(self: Multiaddr) []const u8 {
+        return self.bytes.items;
     }
 
     pub fn startsWith(self: Multiaddr, other: Multiaddr) bool {
@@ -184,7 +214,7 @@ pub const Multiaddr = struct {
         // Find the start of the last protocol
         var offset: usize = 0;
         var last_start: usize = 0;
-        var rest:[]const u8 = self.bytes.items;
+        var rest: []const u8 = self.bytes.items;
 
         while (rest.len > 0) {
             const decoded = try Protocol.fromBytes(rest);
@@ -202,6 +232,31 @@ pub const Multiaddr = struct {
         return Error.InvalidMultiaddr;
     }
 
+    pub fn replace(self: Multiaddr, allocator: std.mem.Allocator, at: usize, new_proto: Protocol) !?Multiaddr {
+        var new_ma = Multiaddr.init(allocator);
+        errdefer new_ma.deinit();
+
+        var count: usize = 0;
+        var replaced = false;
+
+        var iter = self.iterator();
+        while (try iter.next()) |p| {
+            if (count == at) {
+                try new_ma.push(new_proto);
+                replaced = true;
+            } else {
+                try new_ma.push(p);
+            }
+            count += 1;
+        }
+
+        if (!replaced) {
+            new_ma.deinit();
+            return null;
+        }
+        return new_ma;
+    }
+
     pub fn toString(self: Multiaddr, allocator: std.mem.Allocator) ![]u8 {
         var result = std.ArrayList(u8).init(allocator);
         errdefer result.deinit();
@@ -212,9 +267,7 @@ pub const Multiaddr = struct {
             switch (decoded.proto) {
                 .Ip4 => |addr| {
                     const bytes = @as([4]u8, @bitCast(addr.sa.addr));
-                    try result.writer().print("/ip4/{}.{}.{}.{}", .{
-                        bytes[0], bytes[1], bytes[2], bytes[3]
-                    });
+                    try result.writer().print("/ip4/{}.{}.{}.{}", .{ bytes[0], bytes[1], bytes[2], bytes[3] });
                 },
                 .Tcp => |port| try result.writer().print("/tcp/{}", .{port}),
                 else => try result.writer().print("/{s}", .{@tagName(@as(@TypeOf(decoded.proto), decoded.proto))}),
@@ -273,18 +326,7 @@ pub const Multiaddr = struct {
         }
         if (i != 4) return Error.InvalidProtocolString;
     }
-
 };
-
-pub fn empty() Multiaddr {
-    return Multiaddr.init(std.heap.page_allocator);
-}
-
-pub fn withCapacity(allocator: std.mem.Allocator, capacity: usize) Multiaddr {
-    var ma = Multiaddr.init(allocator);
-    ma.bytes.ensureTotalCapacity(capacity) catch unreachable;
-    return ma;
-}
 
 test "multiaddr push and pop" {
     var ma = Multiaddr.init(testing.allocator);
@@ -404,12 +446,12 @@ test "debug tcp write" {
 }
 
 test "multiaddr basic operations" {
-    var ma = empty();
+    var ma = Multiaddr.init(testing.allocator);
     defer ma.deinit();
     try testing.expect(ma.isEmpty());
     try testing.expectEqual(@as(usize, 0), ma.len());
 
-    var ma_cap = withCapacity(testing.allocator, 32);
+    var ma_cap = Multiaddr.withCapacity(testing.allocator, 32);
     defer ma_cap.deinit();
     try testing.expect(ma_cap.isEmpty());
 
@@ -417,8 +459,7 @@ test "multiaddr basic operations" {
     try ma_cap.push(ip4);
     try testing.expect(!ma_cap.isEmpty());
 
-    const vec = try ma_cap.toSlice(testing.allocator);
-    defer testing.allocator.free(vec);
+    const vec = ma_cap.toSlice();
     try testing.expectEqualSlices(u8, ma_cap.bytes.items, vec);
 }
 
@@ -446,4 +487,168 @@ test "protocol tag strings" {
 
     const p2 = Protocol.Http;
     try testing.expectEqualStrings("Http", @tagName(@as(@TypeOf(p2), p2)));
+}
+
+// Iterator over protocols
+pub const ProtocolIterator = struct {
+    bytes: []const u8,
+
+    pub fn next(self: *ProtocolIterator) !?Protocol {
+        if (self.bytes.len == 0) return null;
+        const decoded = try Protocol.fromBytes(self.bytes);
+        self.bytes = decoded.rest;
+        return decoded.proto;
+    }
+};
+
+// Add PeerId if not present at end
+// pub fn withP2p(self: Multiaddr, peer_id: PeerId) !Multiaddr {
+//     var iter = self.iterator();
+//     while (try iter.next()) |p| {
+//         if (p == .P2p) {
+//             if (p.P2p == peer_id) return self;
+//             return error.DifferentPeerId;
+//         }
+//     }
+//     return try self.with(.{ .P2p = peer_id });
+// }
+
+test "multiaddr iterator" {
+    var ma = Multiaddr.init(testing.allocator);
+    defer ma.deinit();
+
+    const ip4 = Protocol{ .Ip4 = std.net.Ip4Address.init([4]u8{ 127, 0, 0, 1 }, 0) };
+    const tcp = Protocol{ .Tcp = 8080 };
+    try ma.push(ip4);
+    try ma.push(tcp);
+
+    var iter = ma.iterator();
+    const first = try iter.next();
+    try testing.expect(first != null);
+    try testing.expectEqual(ip4, first.?);
+
+    const second = try iter.next();
+    try testing.expect(second != null);
+    try testing.expectEqual(tcp, second.?);
+
+    try testing.expectEqual(@as(?Protocol, null), try iter.next());
+}
+
+test "multiaddr with" {
+    var ma = Multiaddr.init(testing.allocator);
+    defer ma.deinit();
+
+    const ip4 = Protocol{ .Ip4 = std.net.Ip4Address.init([4]u8{ 127, 0, 0, 1 }, 0) };
+    const tcp = Protocol{ .Tcp = 8080 };
+
+    var ma2 = try ma.with(testing.allocator, ip4);
+    defer ma2.deinit();
+    var ma3 = try ma2.with(testing.allocator, tcp);
+    defer ma3.deinit();
+
+    var iter = ma3.iterator();
+    try testing.expectEqual(ip4, (try iter.next()).?);
+    try testing.expectEqual(tcp, (try iter.next()).?);
+}
+
+pub const ProtocolStackIterator = struct {
+    iter: ProtocolIterator,
+
+    pub fn next(self: *ProtocolStackIterator) !?[]const u8 {
+        if (try self.iter.next()) |proto| {
+            return proto.tag();
+        }
+        return null;
+    }
+};
+
+test "multiaddr protocol stack" {
+    var ma = Multiaddr.init(testing.allocator);
+    defer ma.deinit();
+
+    const ip4 = Protocol{ .Ip4 = std.net.Ip4Address.init([4]u8{ 127, 0, 0, 1 }, 0) };
+    const tcp = Protocol{ .Tcp = 8080 };
+    try ma.push(ip4);
+    try ma.push(tcp);
+
+    var stack = ma.protocolStack();
+    const first = try stack.next();
+    try testing.expect(first != null);
+    try testing.expectEqualStrings("ip4", first.?);
+
+    const second = try stack.next();
+    try testing.expect(second != null);
+    try testing.expectEqualStrings("tcp", second.?);
+
+    try testing.expectEqual(@as(?[]const u8, null), try stack.next());
+}
+
+test "multiaddr as bytes" {
+    var ma = Multiaddr.init(testing.allocator);
+    defer ma.deinit();
+
+    const ip4 = Protocol{ .Ip4 = std.net.Ip4Address.init([4]u8{ 127, 0, 0, 1 }, 0) };
+    const tcp = Protocol{ .Tcp = 8080 };
+    try ma.push(ip4);
+    try ma.push(tcp);
+
+    const bytes = ma.toSlice();
+    try testing.expectEqualSlices(u8, ma.bytes.items, bytes);
+}
+
+test "multiaddr from protocols" {
+    const protocols = [_]Protocol{
+        .{ .Ip4 = std.net.Ip4Address.init([4]u8{ 127, 0, 0, 1 }, 0) },
+        .{ .Tcp = 8080 },
+    };
+
+    var ma = try Multiaddr.fromProtocols(testing.allocator, &protocols);
+    defer ma.deinit();
+
+    var iter = ma.iterator();
+    try testing.expectEqual(protocols[0], (try iter.next()).?);
+    try testing.expectEqual(protocols[1], (try iter.next()).?);
+    try testing.expectEqual(@as(?Protocol, null), try iter.next());
+}
+
+test "multiaddr replace" {
+    var ma = Multiaddr.init(testing.allocator);
+    defer ma.deinit();
+
+    const ip4 = Protocol{ .Ip4 = std.net.Ip4Address.init([4]u8{ 127, 0, 0, 1 }, 0) };
+    const tcp = Protocol{ .Tcp = 8080 };
+    const new_tcp = Protocol{ .Tcp = 9090 };
+
+    try ma.push(ip4);
+    try ma.push(tcp);
+
+    // Replace TCP port
+    if (try ma.replace(testing.allocator, 1, new_tcp)) |*replaced| {
+        defer replaced.deinit();
+        var iter = replaced.iterator();
+        try testing.expectEqual(ip4, (try iter.next()).?);
+        try testing.expectEqual(new_tcp, (try iter.next()).?);
+    } else {
+        try testing.expect(false);
+    }
+
+    // Try replace at invalid index
+    if (try ma.replace(testing.allocator, 5, new_tcp)) |*replaced| {
+        defer replaced.deinit();
+        try testing.expect(false);
+    }
+}
+
+test "multiaddr deinit mutable and const" {
+    // Test mutable instance
+    var ma_mut = Multiaddr.init(testing.allocator);
+    const ip4 = Protocol{ .Ip4 = std.net.Ip4Address.init([4]u8{ 127, 0, 0, 1 }, 0) };
+    try ma_mut.push(ip4);
+    ma_mut.deinit();
+
+    // Test const instance
+    var ma = Multiaddr.init(testing.allocator);
+    try ma.push(ip4);
+    const ma_const = ma;
+    ma_const.deinit();
 }
