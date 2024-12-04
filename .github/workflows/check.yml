@@ -96,7 +96,79 @@ jobs:
         run: zig fmt --check --color on .
 
       - name: Unit testing
-        run: zig build test -Dtarget=${{ matrix.arch }}-${{ runner.os }} --summary all
+        run: |
+          case "${{ runner.os }}-${{ matrix.arch }}" in
+            Linux-x86_64)
+              target="x86_64-linux"
+              ;;
+            Linux-aarch64)
+              target="aarch64-linux"
+              ;;
+            Linux-i386)
+              target="i386-linux"
+              ;;
+            Linux-arm)
+              target="arm-linux"
+              ;;
+            Linux-riscv64)
+              target="riscv64-linux"
+              ;;
+            macOS-x86_64)
+              target="x86_64-macos"
+              ;;
+            macOS-aarch64)
+              target="aarch64-macos"
+              ;;
+            macOS-i386)
+              target="i386-macos"
+              ;;
+            Windows-x86_64)
+              target="x86_64-windows"
+              ;;
+            Windows-aarch64)
+              target="aarch64-windows"
+              ;;
+            Windows-i386)
+              target="i386-windows"
+              ;;
+          esac
+          zig build test -Dtarget=$target --summary all
 
       - name: Building
-        run: zig build -Dtarget=${{ matrix.arch }}-${{ runner.os }} -Doptimize=ReleaseFast
+        run: |
+          case "${{ runner.os }}-${{ matrix.arch }}" in
+            Linux-x86_64)
+              target="x86_64-linux"
+              ;;
+            Linux-aarch64)
+              target="aarch64-linux"
+              ;;
+            Linux-i386)
+              target="i386-linux"
+              ;;
+            Linux-arm)
+              target="arm-linux"
+              ;;
+            Linux-riscv64)
+              target="riscv64-linux"
+              ;;
+            macOS-x86_64)
+              target="x86_64-macos"
+              ;;
+            macOS-aarch64)
+              target="aarch64-macos"
+              ;;
+            macOS-i386)
+              target="i386-macos"
+              ;;
+            Windows-x86_64)
+              target="x86_64-windows"
+              ;;
+            Windows-aarch64)
+              target="aarch64-windows"
+              ;;
+            Windows-i386)
+              target="i386-windows"
+              ;;
+          esac
+          zig build -Dtarget=$target -Doptimize=ReleaseFast
