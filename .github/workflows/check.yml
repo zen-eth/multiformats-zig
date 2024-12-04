@@ -14,7 +14,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        arch: [x86_64, aarch64, i386]
+        arch: [x86_64, aarch64]
         include:
           - os: ubuntu-latest
             arch: arm
@@ -104,9 +104,6 @@ jobs:
             Linux-aarch64)
               target="aarch64-linux"
               ;;
-            Linux-i386)
-              target="i386-linux"
-              ;;
             Linux-arm)
               target="arm-linux"
               ;;
@@ -119,17 +116,11 @@ jobs:
             macOS-aarch64)
               target="aarch64-macos"
               ;;
-            macOS-i386)
-              target="i386-macos"
-              ;;
             Windows-x86_64)
               target="x86_64-windows"
               ;;
             Windows-aarch64)
               target="aarch64-windows"
-              ;;
-            Windows-i386)
-              target="i386-windows"
               ;;
           esac
           zig build test -Dtarget=$target --summary all
@@ -143,9 +134,6 @@ jobs:
             Linux-aarch64)
               target="aarch64-linux"
               ;;
-            Linux-i386)
-              target="i386-linux"
-              ;;
             Linux-arm)
               target="arm-linux"
               ;;
@@ -158,17 +146,11 @@ jobs:
             macOS-aarch64)
               target="aarch64-macos"
               ;;
-            macOS-i386)
-              target="i386-macos"
-              ;;
             Windows-x86_64)
               target="x86_64-windows"
               ;;
             Windows-aarch64)
               target="aarch64-windows"
-              ;;
-            Windows-i386)
-              target="i386-windows"
               ;;
           esac
           zig build -Dtarget=$target -Doptimize=ReleaseFast
