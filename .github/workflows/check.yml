@@ -1,4 +1,4 @@
-name: Zig Test and Benchmark
+name: Build and Test
 
 on:
   push:

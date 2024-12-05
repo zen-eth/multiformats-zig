@@ -45,6 +45,9 @@ pub const Protocol = union(enum) {
     Ip6: std.net.Ip6Address,
     Tcp: u16,
     Udp: u16, // Added UDP protocol
+    Unix: []const u8,
+    Ws,
+    Wss,
 
     pub fn tag(self: Protocol) []const u8 {
         return switch (self) {
@@ -59,6 +62,9 @@ pub const Protocol = union(enum) {
             .Ip6 => "ip6",
             .Tcp => "tcp",
             .Udp => "udp",
+            .Ws => "ws",
+            .Wss => "wss",
+            .Unix => "unix",
         };
     }
 
@@ -70,15 +76,59 @@ pub const Protocol = union(enum) {
         var rest = decoded.remaining;
 
         return switch (id) {
-            4 => { // IP4
+            IP4 => { // IP4
                 if (rest.len < 4) return Error.DataLessThanLen;
                 const addr = std.net.Ip4Address.init(rest[0..4].*, 0);
                 return .{ .proto = .{ .Ip4 = addr }, .rest = rest[4..] };
             },
-            6 => { // TCP
+            IP6 => { // IP6
+                if (rest.len < 16) return Error.DataLessThanLen;
+                const addr = std.net.Ip6Address.init(rest[0..16].*, 0, 0, 0);
+                return .{ .proto = .{ .Ip6 = addr }, .rest = rest[16..] };
+            },
+            TCP => { // TCP
                 if (rest.len < 2) return Error.DataLessThanLen;
                 const port = std.mem.readInt(u16, rest[0..2], .big);
                 return .{ .proto = .{ .Tcp = port }, .rest = rest[2..] };
+            },
+            UDP => { // UDP
+                if (rest.len < 2) return Error.DataLessThanLen;
+                const port = std.mem.readInt(u16, rest[0..2], .big);
+                return .{ .proto = .{ .Udp = port }, .rest = rest[2..] };
+            },
+            WS => { // WS
+                return .{ .proto = .Ws, .rest = rest };
+            },
+            WSS => { // WSS
+                return .{ .proto = .Wss, .rest = rest };
+            },
+            HTTP => { // HTTP
+                return .{ .proto = .Http, .rest = rest };
+            },
+            HTTPS => { // HTTPS
+                return .{ .proto = .Https, .rest = rest };
+            },
+            DNS => {
+                const size_decoded = try uvarint.decode(usize, rest);
+                const size = size_decoded.value;
+                rest = size_decoded.remaining;
+                if (rest.len < size) return Error.DataLessThanLen;
+                const dns_name = rest[0..size];
+                return .{
+                    .proto = .{ .Dns = dns_name },
+                    .rest = rest[size..],
+                };
+            },
+            UNIX => { // UNIX
+                const size_decoded = try uvarint.decode(usize, rest);
+                const size = size_decoded.value;
+                rest = size_decoded.remaining;
+                if (rest.len < size) return Error.DataLessThanLen;
+                const path = rest[0..size];
+                return .{
+                    .proto = .{ .Unix = path },
+                    .rest = rest[size..],
+                };
             },
             else => Error.UnknownProtocolId,
         };
@@ -87,6 +137,11 @@ pub const Protocol = union(enum) {
         switch (self) {
             .Ip4 => |addr| {
                 _ = try uvarint.encode_stream(writer, u32, IP4);
+                const bytes = std.mem.asBytes(&addr.sa.addr);
+                try writer.writeAll(bytes);
+            },
+            .Ip6 => |addr| {
+                _ = try uvarint.encode_stream(writer, u32, IP6);
                 const bytes = std.mem.asBytes(&addr.sa.addr);
                 try writer.writeAll(bytes);
             },
@@ -102,25 +157,31 @@ pub const Protocol = union(enum) {
                 std.mem.writeInt(u16, &port_bytes, port, .big);
                 try writer.writeAll(&port_bytes);
             },
+            .Ws => {
+                _ = try uvarint.encode_stream(writer, u32, WS);
+            },
+            .Wss => {
+                _ = try uvarint.encode_stream(writer, u32, WSS);
+            },
+            .Dns => |name| {
+                _ = try uvarint.encode_stream(writer, u32, DNS);
+                _ = try uvarint.encode_stream(writer, usize, name.len);
+                try writer.writeAll(name);
+            },
+            .Unix => |path| {
+                _ = try uvarint.encode_stream(writer, u32, UNIX);
+                _ = try uvarint.encode_stream(writer, usize, path.len);
+                try writer.writeAll(path);
+            },
+            .Http => {
+                _ = try uvarint.encode_stream(writer, u32, HTTP);
+            },
+            .Https => {
+                _ = try uvarint.encode_stream(writer, u32, HTTPS);
+            },
             // Temporary catch-all case
             else => {},
         }
-    }
-
-    pub fn toString(self: Protocol) []const u8 {
-        return switch (self) {
-            .Dccp => "dccp",
-            .Dns => "dns",
-            .Dns4 => "dns4",
-            .Dns6 => "dns6",
-            .Dnsaddr => "dnsaddr",
-            .Http => "http",
-            .Https => "https",
-            .Ip4 => "ip4",
-            .Ip6 => "ip6",
-            .Tcp => "tcp",
-            .Udp => "udp",
-        };
     }
 };
 
@@ -232,6 +293,117 @@ pub const Multiaddr = struct {
         return Error.InvalidMultiaddr;
     }
 
+    pub fn fromUrl(allocator: std.mem.Allocator, url_str: []const u8) !Multiaddr {
+        var ma = Multiaddr.init(allocator);
+        errdefer ma.deinit();
+
+        const uri = std.Uri.parse(url_str) catch |err| switch (err) {
+            error.InvalidFormat => return FromUrlError.BadUrl,
+            else => return err,
+        };
+
+        const path = switch (uri.path) {
+            .raw => |raw| raw,
+            .percent_encoded => |encoded| encoded,
+        };
+
+        // Skip path check for Unix sockets
+        if (!std.mem.eql(u8, uri.scheme, "unix") and
+            (uri.user != null or
+            uri.password != null or
+            (path.len > 0 and !std.mem.eql(u8, path, "/")) or
+            uri.query != null or
+            uri.fragment != null))
+        {
+            return FromUrlError.InformationLoss;
+        }
+
+        // Handle different schemes
+        if (std.mem.eql(u8, uri.scheme, "ws") or std.mem.eql(u8, uri.scheme, "wss")) {
+            try handleWebsocketUrl(&ma, uri);
+        } else if (std.mem.eql(u8, uri.scheme, "http") or std.mem.eql(u8, uri.scheme, "https")) {
+            try handleHttpUrl(&ma, uri);
+        } else if (std.mem.eql(u8, uri.scheme, "unix")) {
+            try handleUnixUrl(&ma, uri);
+        } else {
+            return FromUrlError.UnsupportedScheme;
+        }
+
+        return ma;
+    }
+
+    fn handleWebsocketUrl(ma: *Multiaddr, uri: std.Uri) !void {
+        // 处理主机部分
+        if (uri.host) |host_component| {
+            const host = switch (host_component) {
+                .raw => |raw| raw,
+                .percent_encoded => |encoded| encoded,
+            };
+
+            if (std.net.Address.parseIp(host, 0)) |ip| {
+                if (ip.any.family == std.posix.AF.INET) {
+                    const addr = @as([4]u8, @bitCast(ip.in.sa.addr));
+                    try ma.push(.{ .Ip4 = std.net.Ip4Address.init(addr, 0) });
+                } else if (ip.any.family == std.posix.AF.INET6) {
+                    const addr = @as([16]u8, @bitCast(ip.in6.sa.addr));
+                    try ma.push(.{ .Ip6 = std.net.Ip6Address.init(addr, 0, 0, 0) });
+                }
+            } else |_| {
+                try ma.push(.{ .Dns = host });
+            }
+        }
+
+        // 处理端口
+        const port = uri.port orelse if (std.mem.eql(u8, uri.scheme, "ws")) @as(u16, 80) else @as(u16, 443);
+        try ma.push(.{ .Tcp = port });
+
+        // 添加协议
+        if (std.mem.eql(u8, uri.scheme, "ws")) {
+            try ma.push(.Ws);
+        } else {
+            try ma.push(.Wss);
+        }
+    }
+
+    fn handleHttpUrl(ma: *Multiaddr, uri: std.Uri) !void {
+        // 类似websocket的处理逻辑
+        if (uri.host) |host_component| {
+            const host = switch (host_component) {
+                .raw => |raw| raw,
+                .percent_encoded => |encoded| encoded,
+            };
+
+            if (std.net.Address.parseIp(host, 0)) |ip| {
+                if (ip.any.family == std.posix.AF.INET) {
+                    const addr = @as([4]u8, @bitCast(ip.in.sa.addr));
+                    try ma.push(.{ .Ip4 = std.net.Ip4Address.init(addr, 0) });
+                } else if (ip.any.family == std.posix.AF.INET6) {
+                    const addr = @as([16]u8, @bitCast(ip.in6.sa.addr));
+                    try ma.push(.{ .Ip6 = std.net.Ip6Address.init(addr, 0, 0, 0) });
+                }
+            } else |_| {
+                try ma.push(.{ .Dns = host });
+            }
+        }
+
+        const port = uri.port orelse if (std.mem.eql(u8, uri.scheme, "http")) @as(u16, 80) else @as(u16, 443);
+        try ma.push(.{ .Tcp = port });
+
+        if (std.mem.eql(u8, uri.scheme, "http")) {
+            try ma.push(.Http);
+        } else {
+            try ma.push(.Https);
+        }
+    }
+
+    fn handleUnixUrl(ma: *Multiaddr, uri: std.Uri) !void {
+        const path = switch (uri.path) {
+            .raw => |raw| raw,
+            .percent_encoded => |encoded| encoded,
+        };
+        try ma.push(.{ .Unix = path });
+    }
+
     pub fn replace(self: Multiaddr, allocator: std.mem.Allocator, at: usize, new_proto: Protocol) !?Multiaddr {
         var new_ma = Multiaddr.init(allocator);
         errdefer new_ma.deinit();
@@ -269,7 +441,23 @@ pub const Multiaddr = struct {
                     const bytes = @as([4]u8, @bitCast(addr.sa.addr));
                     try result.writer().print("/ip4/{}.{}.{}.{}", .{ bytes[0], bytes[1], bytes[2], bytes[3] });
                 },
+                .Ip6 => |addr| {
+                    const bytes = @as([16]u8, @bitCast(addr.sa.addr));
+                    try result.writer().print("/ip6/{x:0>2}{x:0>2}:{x:0>2}{x:0>2}:{x:0>2}{x:0>2}:{x:0>2}{x:0>2}:{x:0>2}{x:0>2}:{x:0>2}{x:0>2}:{x:0>2}{x:0>2}:{x:0>2}{x:0>2}", .{
+                        bytes[0],  bytes[1],  bytes[2],  bytes[3],
+                        bytes[4],  bytes[5],  bytes[6],  bytes[7],
+                        bytes[8],  bytes[9],  bytes[10], bytes[11],
+                        bytes[12], bytes[13], bytes[14], bytes[15],
+                    });
+                },
                 .Tcp => |port| try result.writer().print("/tcp/{}", .{port}),
+                .Udp => |port| try result.writer().print("/udp/{}", .{port}),
+                .Ws => try result.writer().print("/ws", .{}),
+                .Wss => try result.writer().print("/wss", .{}),
+                .Http => try result.writer().print("/http", .{}),
+                .Https => try result.writer().print("/https", .{}),
+                .Dns => |host| try result.writer().print("/dns/{s}", .{host}),
+                .Unix => |path| try result.writer().print("/unix/{s}", .{path}),
                 else => try result.writer().print("/{s}", .{@tagName(@as(@TypeOf(decoded.proto), decoded.proto))}),
             }
             rest_bytes = decoded.rest;
@@ -416,33 +604,6 @@ test "multiaddr from string" {
 
         try testing.expectEqualStrings(case, str);
     }
-}
-
-test "debug protocol bytes" {
-    var ma = Multiaddr.init(testing.allocator);
-    defer ma.deinit();
-
-    const ip4 = Protocol{ .Ip4 = std.net.Ip4Address.init([4]u8{ 127, 0, 0, 1 }, 0) };
-    try ma.push(ip4);
-
-    std.debug.print("\nBuffer contents: ", .{});
-    for (ma.bytes.items) |b| {
-        std.debug.print("{x:0>2} ", .{b});
-    }
-    std.debug.print("\n", .{});
-}
-
-test "debug tcp write" {
-    var buf: [128]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
-    const tcp = Protocol{ .Tcp = 8080 };
-    try tcp.writeBytes(fbs.writer());
-
-    std.debug.print("\nTCP write buffer: ", .{});
-    for (buf[0..fbs.pos]) |b| {
-        std.debug.print("{x:0>2} ", .{b});
-    }
-    std.debug.print("\n", .{});
 }
 
 test "multiaddr basic operations" {
@@ -651,4 +812,94 @@ test "multiaddr deinit mutable and const" {
     try ma.push(ip4);
     const ma_const = ma;
     ma_const.deinit();
+}
+
+pub const FromUrlError = error{
+    BadUrl,
+    UnsupportedScheme,
+    InformationLoss,
+};
+
+test "multiaddr from url - websocket" {
+    // Test ws://
+    {
+        var ma = try Multiaddr.fromUrl(testing.allocator, "ws://127.0.0.1:8000");
+        defer ma.deinit();
+        const str = try ma.toString(testing.allocator);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("/ip4/127.0.0.1/tcp/8000/ws", str);
+    }
+
+    // Test wss:// with default port
+    {
+        var ma = try Multiaddr.fromUrl(testing.allocator, "wss://127.0.0.1");
+        defer ma.deinit();
+        const str = try ma.toString(testing.allocator);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("/ip4/127.0.0.1/tcp/443/wss", str);
+    }
+
+    // Test with DNS hostname
+    {
+        var ma = try Multiaddr.fromUrl(testing.allocator, "wss://example.com");
+        defer ma.deinit();
+        const str = try ma.toString(testing.allocator);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("/dns/example.com/tcp/443/wss", str);
+    }
+}
+
+test "multiaddr from url - http" {
+    // Test http://
+    {
+        var ma = try Multiaddr.fromUrl(testing.allocator, "http://127.0.0.1:8080");
+        defer ma.deinit();
+        const str = try ma.toString(testing.allocator);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("/ip4/127.0.0.1/tcp/8080/http", str);
+    }
+
+    // Test https:// with DNS
+    {
+        var ma = try Multiaddr.fromUrl(testing.allocator, "https://example.com");
+        defer ma.deinit();
+        const str = try ma.toString(testing.allocator);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("/dns/example.com/tcp/443/https", str);
+    }
+}
+
+test "multiaddr from url - unix" {
+    var ma = try Multiaddr.fromUrl(testing.allocator, "unix:/tmp/test.sock");
+    defer ma.deinit();
+    const str = try ma.toString(testing.allocator);
+    defer testing.allocator.free(str);
+    try testing.expectEqualStrings("/unix//tmp/test.sock", str);
+}
+
+test "multiaddr from url - information loss" {
+    // Basic information loss cases
+    try testing.expectError(FromUrlError.InformationLoss, Multiaddr.fromUrl(testing.allocator, "http://user@example.com"));
+    try testing.expectError(FromUrlError.InformationLoss, Multiaddr.fromUrl(testing.allocator, "http://user:pass@example.com"));
+    try testing.expectError(FromUrlError.InformationLoss, Multiaddr.fromUrl(testing.allocator, "http://example.com/path/to/resource"));
+    try testing.expectError(FromUrlError.InformationLoss, Multiaddr.fromUrl(testing.allocator, "http://example.com?query=value"));
+    try testing.expectError(FromUrlError.InformationLoss, Multiaddr.fromUrl(testing.allocator, "http://example.com#fragment"));
+
+    // Valid cases that should not trigger information loss
+    {
+        var ma = try Multiaddr.fromUrl(testing.allocator, "http://example.com/");
+        defer ma.deinit();
+        const str = try ma.toString(testing.allocator);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("/dns/example.com/tcp/80/http", str);
+    }
+
+    // Unix socket paths should not trigger information loss
+    {
+        var ma = try Multiaddr.fromUrl(testing.allocator, "unix:/path/to/socket");
+        defer ma.deinit();
+        const str = try ma.toString(testing.allocator);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("/unix//path/to/socket", str);
+    }
 }

@@ -69,6 +69,11 @@ fn maxBytesForType(comptime T: type) usize {
         u32 => 5,
         u64 => 10,
         u128 => 19,
+        usize => switch (@sizeOf(usize)) {
+            4 => 5, // 32-bit
+            8 => 10, // 64-bit
+            else => @compileError("Unsupported usize width"),
+        },
         else => @compileError("Unsupported integer type"),
     };
 }
