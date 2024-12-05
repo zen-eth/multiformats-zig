@@ -63,26 +63,26 @@ jobs:
       - name: Formatting
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then
-            ~/zig/zig.exe fmt --check --color on .
+            "${HOME}/zig/zig.exe" fmt --check --color on .
           else
-            ~/zig/zig fmt --check --color on .
+            "${HOME}/zig/zig" fmt --check --color on .
           fi
         shell: bash
 
       - name: Unit testing
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then
-            ~/zig/zig.exe build test --summary all
+            "${HOME}/zig/zig.exe" build test --summary all
           else
-            ~/zig/zig build test --summary all
+            "${HOME}/zig/zig" build test --summary all
           fi
         shell: bash
 
       - name: Building
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then
-            ~/zig/zig.exe build -Doptimize=ReleaseFast
+            "${HOME}/zig/zig.exe" build -Doptimize=ReleaseFast
           else
-            ~/zig/zig build -Doptimize=ReleaseFast
+            "${HOME}/zig/zig" build -Doptimize=ReleaseFast
           fi
         shell: bash
