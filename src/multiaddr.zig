@@ -32,6 +32,10 @@ const ONION3: u32 = 445;
 const QUIC: u32 = 460;
 const WS: u32 = 477;
 const WSS: u32 = 478;
+const SCTP: u32 = 132;
+const QUIC_V1: u32 = 461;
+const P2P_CIRCUIT: u32 = 290;
+const WEBTRANSPORT: u32 = 465;
 
 pub const Protocol = union(enum) {
     Dccp: u16,
@@ -48,6 +52,11 @@ pub const Protocol = union(enum) {
     Unix: []const u8,
     Ws,
     Wss,
+    Sctp: u16,
+    Quic,
+    QuicV1,
+    P2pCircuit,
+    WebTransport,
 
     pub fn tag(self: Protocol) []const u8 {
         return switch (self) {
@@ -65,6 +74,11 @@ pub const Protocol = union(enum) {
             .Ws => "ws",
             .Wss => "wss",
             .Unix => "unix",
+            .Sctp => "sctp",
+            .Quic => "quic",
+            .QuicV1 => "quic-v1",
+            .P2pCircuit => "p2p-circuit",
+            .WebTransport => "webtransport",
         };
     }
 
@@ -154,6 +168,20 @@ pub const Protocol = union(enum) {
                 const dns_name = rest[0..size];
                 return .{ .proto = .{ .Dnsaddr = dns_name }, .rest = rest[size..] };
             },
+            DCCP => {
+                if (rest.len < 2) return Error.DataLessThanLen;
+                const port = std.mem.readInt(u16, rest[0..2], .big);
+                return .{ .proto = .{ .Dccp = port }, .rest = rest[2..] };
+            },
+            SCTP => {
+                if (rest.len < 2) return Error.DataLessThanLen;
+                const port = std.mem.readInt(u16, rest[0..2], .big);
+                return .{ .proto = .{ .Sctp = port }, .rest = rest[2..] };
+            },
+            QUIC => return .{ .proto = .Quic, .rest = rest },
+            QUIC_V1 => return .{ .proto = .QuicV1, .rest = rest },
+            P2P_CIRCUIT => return .{ .proto = .P2pCircuit, .rest = rest },
+            WEBTRANSPORT => return .{ .proto = .WebTransport, .rest = rest },
             else => Error.UnknownProtocolId,
         };
     }
@@ -218,8 +246,30 @@ pub const Protocol = union(enum) {
                 _ = try uvarint.encode_stream(writer, usize, name.len);
                 try writer.writeAll(name);
             },
-            // Temporary catch-all case
-            else => {},
+            .Dccp => |port| {
+                _ = try uvarint.encode_stream(writer, u32, DCCP);
+                var port_bytes: [2]u8 = undefined;
+                std.mem.writeInt(u16, &port_bytes, port, .big);
+                try writer.writeAll(&port_bytes);
+            },
+            .Sctp => |port| {
+                _ = try uvarint.encode_stream(writer, u32, SCTP);
+                var port_bytes: [2]u8 = undefined;
+                std.mem.writeInt(u16, &port_bytes, port, .big);
+                try writer.writeAll(&port_bytes);
+            },
+            .Quic => {
+                _ = try uvarint.encode_stream(writer, u32, QUIC);
+            },
+            .QuicV1 => {
+                _ = try uvarint.encode_stream(writer, u32, QUIC_V1);
+            },
+            .P2pCircuit => {
+                _ = try uvarint.encode_stream(writer, u32, P2P_CIRCUIT);
+            },
+            .WebTransport => {
+                _ = try uvarint.encode_stream(writer, u32, WEBTRANSPORT);
+            },
         }
     }
 };
@@ -523,7 +573,12 @@ pub const Multiaddr = struct {
                 .Dns4 => |host| try result.writer().print("/dns4/{s}", .{host}),
                 .Dns6 => |host| try result.writer().print("/dns6/{s}", .{host}),
                 .Dnsaddr => |host| try result.writer().print("/dnsaddr/{s}", .{host}),
-                else => try result.writer().print("/{s}", .{@tagName(@as(@TypeOf(decoded.proto), decoded.proto))}),
+                .Dccp => |port| try result.writer().print("/dccp/{}", .{port}),
+                .Sctp => |port| try result.writer().print("/sctp/{}", .{port}),
+                .Quic => try result.writer().print("/quic", .{}),
+                .QuicV1 => try result.writer().print("/quic-v1", .{}),
+                .P2pCircuit => try result.writer().print("/p2p-circuit", .{}),
+                .WebTransport => try result.writer().print("/webtransport", .{}),
             }
             rest_bytes = decoded.rest;
         }
@@ -1026,5 +1081,71 @@ test "multiaddr dns protocols" {
         const second = try iter.next();
         try testing.expect(second != null);
         try testing.expectEqual(@as(u16, 80), second.?.Tcp);
+    }
+}
+
+test "multiaddr protocol - dccp and sctp" {
+    // Test DCCP
+    {
+        var ma = Multiaddr.init(testing.allocator);
+        defer ma.deinit();
+        try ma.push(.{ .Dccp = 1234 });
+        const str = try ma.toString(testing.allocator);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("/dccp/1234", str);
+    }
+
+    // Test SCTP
+    {
+        var ma = Multiaddr.init(testing.allocator);
+        defer ma.deinit();
+        try ma.push(.{ .Sctp = 5678 });
+        const str = try ma.toString(testing.allocator);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("/sctp/5678", str);
+    }
+}
+
+test "multiaddr protocol - quic variants" {
+    // Test QUIC
+    {
+        var ma = Multiaddr.init(testing.allocator);
+        defer ma.deinit();
+        try ma.push(.Quic);
+        const str = try ma.toString(testing.allocator);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("/quic", str);
+    }
+
+    // Test QUIC-V1
+    {
+        var ma = Multiaddr.init(testing.allocator);
+        defer ma.deinit();
+        try ma.push(.QuicV1);
+        const str = try ma.toString(testing.allocator);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("/quic-v1", str);
+    }
+}
+
+test "multiaddr protocol - p2p-circuit and webtransport" {
+    // Test P2P-Circuit
+    {
+        var ma = Multiaddr.init(testing.allocator);
+        defer ma.deinit();
+        try ma.push(.P2pCircuit);
+        const str = try ma.toString(testing.allocator);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("/p2p-circuit", str);
+    }
+
+    // Test WebTransport
+    {
+        var ma = Multiaddr.init(testing.allocator);
+        defer ma.deinit();
+        try ma.push(.WebTransport);
+        const str = try ma.toString(testing.allocator);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("/webtransport", str);
     }
 }
