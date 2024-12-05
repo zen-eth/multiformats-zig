@@ -130,6 +130,30 @@ pub const Protocol = union(enum) {
                     .rest = rest[size..],
                 };
             },
+            DNS4 => {
+                const size_decoded = try uvarint.decode(usize, rest);
+                const size = size_decoded.value;
+                rest = size_decoded.remaining;
+                if (rest.len < size) return Error.DataLessThanLen;
+                const dns_name = rest[0..size];
+                return .{ .proto = .{ .Dns4 = dns_name }, .rest = rest[size..] };
+            },
+            DNS6 => {
+                const size_decoded = try uvarint.decode(usize, rest);
+                const size = size_decoded.value;
+                rest = size_decoded.remaining;
+                if (rest.len < size) return Error.DataLessThanLen;
+                const dns_name = rest[0..size];
+                return .{ .proto = .{ .Dns6 = dns_name }, .rest = rest[size..] };
+            },
+            DNSADDR => {
+                const size_decoded = try uvarint.decode(usize, rest);
+                const size = size_decoded.value;
+                rest = size_decoded.remaining;
+                if (rest.len < size) return Error.DataLessThanLen;
+                const dns_name = rest[0..size];
+                return .{ .proto = .{ .Dnsaddr = dns_name }, .rest = rest[size..] };
+            },
             else => Error.UnknownProtocolId,
         };
     }
@@ -178,6 +202,21 @@ pub const Protocol = union(enum) {
             },
             .Https => {
                 _ = try uvarint.encode_stream(writer, u32, HTTPS);
+            },
+            .Dns4 => |name| {
+                _ = try uvarint.encode_stream(writer, u32, DNS4);
+                _ = try uvarint.encode_stream(writer, usize, name.len);
+                try writer.writeAll(name);
+            },
+            .Dns6 => |name| {
+                _ = try uvarint.encode_stream(writer, u32, DNS6);
+                _ = try uvarint.encode_stream(writer, usize, name.len);
+                try writer.writeAll(name);
+            },
+            .Dnsaddr => |name| {
+                _ = try uvarint.encode_stream(writer, u32, DNSADDR);
+                _ = try uvarint.encode_stream(writer, usize, name.len);
+                try writer.writeAll(name);
             },
             // Temporary catch-all case
             else => {},
@@ -481,6 +520,9 @@ pub const Multiaddr = struct {
                 .Https => try result.writer().print("/https", .{}),
                 .Dns => |host| try result.writer().print("/dns/{s}", .{host}),
                 .Unix => |path| try result.writer().print("/unix/{s}", .{path}),
+                .Dns4 => |host| try result.writer().print("/dns4/{s}", .{host}),
+                .Dns6 => |host| try result.writer().print("/dns6/{s}", .{host}),
+                .Dnsaddr => |host| try result.writer().print("/dnsaddr/{s}", .{host}),
                 else => try result.writer().print("/{s}", .{@tagName(@as(@TypeOf(decoded.proto), decoded.proto))}),
             }
             rest_bytes = decoded.rest;
@@ -935,5 +977,54 @@ test "multiaddr from url lossy" {
         const str = try ma.toString(testing.allocator);
         defer testing.allocator.free(str);
         try testing.expectEqualStrings("/dns/example.com/tcp/80/http", str);
+    }
+}
+
+test "multiaddr dns protocols" {
+    // DNS4
+    {
+        var ma = Multiaddr.init(testing.allocator);
+        defer ma.deinit();
+        try ma.push(.{ .Dns4 = "example.com" });
+        const str = try ma.toString(testing.allocator);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("/dns4/example.com", str);
+    }
+
+    // DNS6
+    {
+        var ma = Multiaddr.init(testing.allocator);
+        defer ma.deinit();
+        try ma.push(.{ .Dns6 = "example.com" });
+        const str = try ma.toString(testing.allocator);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("/dns6/example.com", str);
+    }
+
+    // DNSADDR
+    {
+        var ma = Multiaddr.init(testing.allocator);
+        defer ma.deinit();
+        try ma.push(.{ .Dnsaddr = "example.com" });
+        const str = try ma.toString(testing.allocator);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("/dnsaddr/example.com", str);
+    }
+
+    // Test encoding/decoding roundtrip
+    {
+        var ma = Multiaddr.init(testing.allocator);
+        defer ma.deinit();
+        try ma.push(.{ .Dns4 = "example.com" });
+        try ma.push(.{ .Tcp = 80 });
+
+        var iter = ma.iterator();
+        const first = try iter.next();
+        try testing.expect(first != null);
+        try testing.expectEqualStrings("example.com", first.?.Dns4);
+
+        const second = try iter.next();
+        try testing.expect(second != null);
+        try testing.expectEqual(@as(u16, 80), second.?.Tcp);
     }
 }
