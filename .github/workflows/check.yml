@@ -61,28 +61,31 @@ jobs:
           restore-keys: ${{ runner.os }}-zig-build-
 
       - name: Formatting
-        run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            "${HOME}/zig/zig.exe" fmt --check --color on .
-          else
-            "${HOME}/zig/zig" fmt --check --color on .
-          fi
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: $env:HOME/zig/zig.exe fmt --check --color on .
+
+      - name: Formatting
+        if: runner.os != 'Windows'
         shell: bash
+        run: ~/zig/zig fmt --check --color on .
 
       - name: Unit testing
-        run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            "${HOME}/zig/zig.exe" build test --summary all
-          else
-            "${HOME}/zig/zig" build test --summary all
-          fi
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: $env:HOME/zig/zig.exe build test --summary all
+
+      - name: Unit testing
+        if: runner.os != 'Windows'
         shell: bash
+        run: ~/zig/zig build test --summary all
 
       - name: Building
-        run: |
-          if [ "${{ runner.os }}" = "Windows" ]; then
-            "${HOME}/zig/zig.exe" build -Doptimize=ReleaseFast
-          else
-            "${HOME}/zig/zig" build -Doptimize=ReleaseFast
-          fi
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: $env:HOME/zig/zig.exe build -Doptimize=ReleaseFast
+
+      - name: Building
+        if: runner.os != 'Windows'
         shell: bash
+        run: ~/zig/zig build -Doptimize=ReleaseFast
