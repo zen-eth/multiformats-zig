@@ -93,7 +93,17 @@ jobs:
             ${{ runner.os }}-${{ matrix.arch }}-zig-build-
 
       - name: Formatting
-        run: zig fmt --check --color on .
+        run: |
+          case "${{ runner.os }}-${{ matrix.arch }}" in
+            Linux-x86_64)
+              ~/zig/zig fmt --check --color on .
+              ;;
+            *)
+              # Skip fmt check on non-native architectures
+              echo "Skipping fmt check on ${{ runner.os }}-${{ matrix.arch }}"
+              ;;
+          esac
+        shell: bash
 
       - name: Unit testing
         run: |
