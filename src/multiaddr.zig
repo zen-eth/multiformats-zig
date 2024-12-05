@@ -332,6 +332,29 @@ pub const Multiaddr = struct {
         return ma;
     }
 
+    pub fn fromUrlLossy(allocator: std.mem.Allocator, url_str: []const u8) !Multiaddr {
+        var ma = Multiaddr.init(allocator);
+        errdefer ma.deinit();
+
+        const uri = std.Uri.parse(url_str) catch |err| switch (err) {
+            error.InvalidFormat => return FromUrlError.BadUrl,
+            else => return err,
+        };
+
+        // Handle different schemes without checking for information loss
+        if (std.mem.eql(u8, uri.scheme, "ws") or std.mem.eql(u8, uri.scheme, "wss")) {
+            try handleWebsocketUrl(&ma, uri);
+        } else if (std.mem.eql(u8, uri.scheme, "http") or std.mem.eql(u8, uri.scheme, "https")) {
+            try handleHttpUrl(&ma, uri);
+        } else if (std.mem.eql(u8, uri.scheme, "unix")) {
+            try handleUnixUrl(&ma, uri);
+        } else {
+            return FromUrlError.UnsupportedScheme;
+        }
+
+        return ma;
+    }
+
     fn handleWebsocketUrl(ma: *Multiaddr, uri: std.Uri) !void {
         // 处理主机部分
         if (uri.host) |host_component| {
@@ -901,5 +924,16 @@ test "multiaddr from url - information loss" {
         const str = try ma.toString(testing.allocator);
         defer testing.allocator.free(str);
         try testing.expectEqualStrings("/unix//path/to/socket", str);
+    }
+}
+
+test "multiaddr from url lossy" {
+    // These should work with lossy conversion
+    {
+        var ma = try Multiaddr.fromUrlLossy(testing.allocator, "http://example.com/ignored/path?query=value#fragment");
+        defer ma.deinit();
+        const str = try ma.toString(testing.allocator);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("/dns/example.com/tcp/80/http", str);
     }
 }
