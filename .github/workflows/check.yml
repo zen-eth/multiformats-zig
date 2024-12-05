@@ -105,6 +105,10 @@ jobs:
           esac
         shell: bash
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v2
+        if: matrix.arch != 'x86_64'
+
       - name: Unit testing
         run: |
           case "${{ runner.os }}-${{ matrix.arch }}" in
@@ -112,13 +116,13 @@ jobs:
               target="x86_64-linux"
               ;;
             Linux-aarch64)
-              target="aarch64-linux"
+              target="aarch64-linux-gnu"
               ;;
             Linux-arm)
-              target="arm-linux"
+              target="arm-linux-gnueabihf"
               ;;
             Linux-riscv64)
-              target="riscv64-linux"
+              target="riscv64-linux-gnu"
               ;;
             macOS-x86_64)
               target="x86_64-macos"
@@ -133,7 +137,7 @@ jobs:
               target="aarch64-windows"
               ;;
           esac
-          zig build test -Dtarget=$target --summary all
+          qemu-${{ matrix.arch }} ~/zig/zig build test -Dtarget=$target --summary all
 
       - name: Building
         run: |
@@ -142,13 +146,13 @@ jobs:
               target="x86_64-linux"
               ;;
             Linux-aarch64)
-              target="aarch64-linux"
+              target="aarch64-linux-gnu"
               ;;
             Linux-arm)
-              target="arm-linux"
+              target="arm-linux-gnueabihf"
               ;;
             Linux-riscv64)
-              target="riscv64-linux"
+              target="riscv64-linux-gnu"
               ;;
             macOS-x86_64)
               target="x86_64-macos"
@@ -163,4 +167,4 @@ jobs:
               target="aarch64-windows"
               ;;
           esac
-          zig build -Dtarget=$target -Doptimize=ReleaseFast
+          qemu-${{ matrix.arch }} ~/zig/zig build -Dtarget=$target -Doptimize=ReleaseFast          zig build -Dtarget=$target -Doptimize=ReleaseFast
