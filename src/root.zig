@@ -8,6 +8,7 @@ const multihash_impls = @import("multihash.zig");
 const unsigned_varint = @import("unsigned_varint.zig");
 const multibase = @import("multibase.zig");
 const multiaddr = @import("multiaddr.zig");
+const cid = @import("cid.zig");
 
 test {
     @import("std").testing.refAllDeclsRecursive(@This());
@@ -16,4 +17,5 @@ test {
     _ = @import("multihash.zig");
     _ = @import("multibase.zig");
     _ = @import("multiaddr.zig");
+    _ = @import("cid.zig");
 }
