@@ -7,3 +7,6 @@
 [submodule "src/spec/rust-multiaddr"]
 	path = src/spec/rust-multiaddr
 	url = https://github.com/multiformats/rust-multiaddr
+[submodule "src/spec/rust-cid"]
+	path = src/spec/rust-cid
+	url = https://github.com/multiformats/rust-cid
