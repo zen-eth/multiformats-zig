@@ -2,6 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Multicodec = @import("multicodec.zig").Multicodec;
 const Multihash = @import("multihash.zig").Multihash;
+const varint = @import("unsigned_varint.zig");
 
 pub const Error = error{
     UnknownCodec,
@@ -84,115 +85,40 @@ pub fn Cid(comptime S: usize) type {
             }
         }
 
-        // pub fn fromBytes(allocator: Allocator, bytes: []const u8) !@This() {
-        //     if (CidVersion.isV0Binary(bytes)) {
-        //         return @This().init(allocator, .V0, 0x70, bytes[2..]);
-        //     }
-        //
-        //     if (bytes.len < 2) {
-        //         return Error.InputTooShort;
-        //     }
-        //
-        //     const version = try std.meta.intToEnum(CidVersion, bytes[0]);
-        //     const codec = bytes[1];
-        //
-        //     return @This().init(allocator, version, codec, bytes[2..]);
-        // }
+        pub fn readBytes(allocator: Allocator, reader: anytype) !Cid {
+            const version = try varint.decode_stream(reader, u64);
+            const codec = try varint.decode_stream(reader, u64);
 
+            // CIDv0 has the fixed `0x12 0x20` prefix
+            if (version == 0x12 and codec == 0x20) {
+                var digest: [32]u8 = undefined;
+                try reader.readNoEof(&digest);
+                const mh = try Multihash(32).wrap(version, &digest);
+                return newV0(allocator, mh);
+            }
 
+            const ver = try CidVersion.fromInt(version);
+            switch (ver) {
+                .V0 => return Error.InvalidExplicitCidV0,
+                .V1 => {
+                    const mh = try Multihash(32).read(reader);
+                    return Cid.init(allocator, ver, codec, mh.getDigest());
+                },
+            }
+        }
 
-        // pub fn toBytes(self: @This()) ![]u8 {
-        //     var buf = try self.allocator.alloc(u8, 2 + self.hash.len);
-        //
-        //     switch (self.version) {
-        //         .V0 => {
-        //             buf[0] = 0x12;
-        //             buf[1] = 0x20;
-        //         },
-        //         .V1 => {
-        //             buf[0] = @as(u8, @intCast(@intFromEnum(self.version)));
-        //             buf[1] = @as(u8, @intCast(self.codec));
-        //         },
-        //     }
-        //
-        //     @memcpy(buf[2..], &self.hash);
-        //     return buf;
-        // }
+        fn writeBytesV1(self: *const Cid, writer: anytype) !usize {
+            const version_written=try varint.encode_stream(writer,u64,self.version.toInt());
+            const codec_written=try varint.encode_stream(writer,u64,self.codec);
+
+            const written: usize = version_written + codec_written;
+
+            return written;
+        }
+
     };
 }
-// pub const Codec = enum(u64) {
-//     Raw = 0x55,
-//     DagPb = 0x70,
-//     DagCbor = 0x71,
-//
-//     pub fn fromInt(value: u64) Error!Codec {
-//         return switch (value) {
-//             0x55 => .Raw,
-//             0x70 => .DagPb,
-//             0x71 => .DagCbor,
-//             else => Error.UnknownCodec,
-//         };
-//     }
-// };
-//
-// pub const Cid = struct {
-//     version: CidVersion,
-//     codec: Codec,
-//     hash: []const u8,
-//     allocator: Allocator,
-//
-//     pub fn init(allocator: Allocator, version: CidVersion, codec: Codec, hash: []const u8) !Cid {
-//         if (version == .V0 and codec != .DagPb) {
-//             return Error.InvalidCidV0Codec;
-//         }
-//
-//         const hash_copy = try allocator.dupe(u8, hash);
-//         return Cid{
-//             .version = version,
-//             .codec = codec,
-//             .hash = hash_copy,
-//             .allocator = allocator,
-//         };
-//     }
-//
-//     pub fn fromBytes(allocator: Allocator, bytes: []const u8) !Cid {
-//         if (CidVersion.isV0Binary(bytes)) {
-//             return Cid.init(allocator, .V0, .DagPb, bytes[2..]);
-//         }
-//
-//         if (bytes.len < 2) {
-//             return Error.InputTooShort;
-//         }
-//
-//         const version = try std.meta.intToEnum(CidVersion, bytes[0]);
-//         const codec = try Codec.fromInt(bytes[1]);
-//
-//         return Cid.init(allocator, version, codec, bytes[2..]);
-//     }
-//
-//     pub fn deinit(self: *Cid) void {
-//         self.allocator.free(self.hash);
-//     }
-//
-//     pub fn toBytes(self: Cid) ![]u8 {
-//         var buf = try self.allocator.alloc(u8, 2 + self.hash.len);
-//
-//         switch (self.version) {
-//             .V0 => {
-//                 buf[0] = 0x12;
-//                 buf[1] = 0x20;
-//             },
-//             .V1 => {
-//                 buf[0] = @as(u8, @intCast(@intFromEnum(self.version)));
-//                 buf[1] = @as(u8, @intCast(@intFromEnum(self.codec)));
-//             },
-//         }
-//
-//         std.mem.copyForwards(u8, buf[2..], self.hash);
-//         return buf;
-//     }
-// };
-//
+
 // test "CID basic operations" {
 //     const testing = std.testing;
 //     const allocator = testing.allocator;

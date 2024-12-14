@@ -83,7 +83,7 @@ pub fn bufferSize(comptime T: type) usize {
 }
 
 pub fn encode_stream(writer: anytype, comptime T: type, number: T) !usize {
-    var buf: [10]u8 = undefined;
+    var buf: [bufferSize(T)]u8 = undefined;
     const encoded = encode(T, number, &buf);
     try writer.writeAll(encoded);
     return encoded.len;
