@@ -63,21 +63,21 @@ pub fn Multihash(comptime S: usize) type {
         }
 
         pub fn encodedLen(self: Self) usize {
-            var code_buf: [10]u8 = undefined;
+            var code_buf: [varint.bufferSize(u64)]u8 = undefined;
             const code_encoded = varint.encode(u64, self.code.getCode(), &code_buf);
 
-            var size_buf: [1]u8 = undefined;
+            var size_buf: [varint.bufferSize(u8)]u8 = undefined;
             const size_encoded = varint.encode(u8, self.size, &size_buf);
 
             return code_encoded.len + size_encoded.len + self.size;
         }
 
         pub fn write(self: Self, writer: anytype) !usize {
-            var code_buf: [10]u8 = undefined;
+            var code_buf: [varint.bufferSize(u64)]u8 = undefined;
             const code_encoded = varint.encode(u64, self.code.getCode(), &code_buf);
             try writer.writeAll(code_encoded);
 
-            var size_buf: [1]u8 = undefined;
+            var size_buf: [varint.bufferSize(u8)]u8 = undefined;
             const size_encoded = varint.encode(u8, self.size, &size_buf);
             try writer.writeAll(size_encoded);
 
@@ -105,9 +105,10 @@ pub fn Multihash(comptime S: usize) type {
         }
 
         pub fn toBytes(self: Self, allocator: std.mem.Allocator) ![]u8 {
-            const bytes = try allocator.alloc(u8, self.encodedLen());
+            const bytes = try allocator.alloc(u8, self.size);
             var stream = std.io.fixedBufferStream(bytes);
-            _ = try self.write(stream.writer());
+            const written = try self.write(stream.writer());
+            std.debug.assert(written == bytes.len);
             return bytes;
         }
     };
