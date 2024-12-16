@@ -240,7 +240,7 @@ pub fn Cid(comptime S: usize) type {
 
                     const needed_size = base.calcSize(bytes);
                     const dest = try self.allocator.alloc(u8, needed_size);
-                    const encoded=base.encode(dest, bytes);
+                    const encoded = base.encode(dest, bytes);
                     if (encoded.len < dest.len) {
                         // Shrink allocation to exact size if needed
                         return self.allocator.realloc(dest, encoded.len);
