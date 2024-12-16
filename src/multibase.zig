@@ -148,6 +148,69 @@ pub const MultiBaseCodec = enum {
         };
     }
 
+    /// Calculates the size needed for encoding the given source bytes
+    pub fn calcSize(self: MultiBaseCodec, source: []const u8) usize {
+        const code_len = self.code().len;
+        std.debug.print("code_len: {}\n", .{code_len});
+        return code_len + switch (self) {
+            .Identity => source.len,
+            .Base2 => source.len * 8,
+            .Base8 => (source.len * 8 + 2) / 3,
+            .Base10 => blk: {
+                if (source.len == 0) break :blk 1;
+                var size: usize = 1;
+                for (source) |byte| {
+                    if (byte == 0) {
+                        size += 1;
+                        continue;
+                    }
+                    size += @as(usize, @intFromFloat(@ceil(@log10(@as(f64, @floatFromInt(byte))))));
+                }
+                break :blk size;
+            },
+            .Base16Lower, .Base16Upper => source.len * 2,
+            .Base32Lower, .Base32Upper, .Base32HexLower, .Base32HexUpper, .Base32Z => (source.len * 8 + 4) / 5,
+            .Base32PadLower, .Base32PadUpper, .Base32HexPadLower, .Base32HexPadUpper => ((source.len + 4) / 5) * 8,
+            .Base36Lower, .Base36Upper => blk: {
+                if (source.len == 0) break :blk 1;
+                var size: usize = 1;
+                for (source) |byte| {
+                    if (byte == 0) {
+                        size += 1;
+                        continue;
+                    }
+                    size += @as(usize, @intFromFloat(@ceil(@log(36.0) / @log(2.0) * 8.0)));
+                }
+                break :blk size;
+            },
+            .Base58Flickr, .Base58Btc => blk: {
+                if (source.len == 0) break :blk 1;
+                // Base58 expands at worst case by log(256)/log(58) ≈ 1.37 times
+                const size = @as(usize, @intFromFloat(@ceil(@as(f64, @floatFromInt(source.len)) * 137 / 100)));
+                break :blk size;
+            },
+            .Base64, .Base64Url => (source.len + 2) / 3 * 4,
+            .Base64Pad, .Base64UrlPad => ((source.len + 2) / 3) * 4,
+            .Base256Emoji => source.len * 4, // Each emoji is up to 4 bytes in UTF-8
+        };
+    }
+
+    /// Calculates the maximum size needed for decoding the given encoded string
+    pub fn calcSizeForDecode(self: MultiBaseCodec, source: []const u8) usize {
+        return switch (self) {
+            .Identity => source.len - 1,
+            .Base2 => (source.len - 1) / 8,
+            .Base8 => (source.len - 1) * 3 / 8,
+            .Base10 => source.len - 1,
+            .Base16Lower, .Base16Upper => (source.len - 1) / 2,
+            .Base32Lower, .Base32Upper, .Base32HexLower, .Base32HexUpper, .Base32PadLower, .Base32PadUpper, .Base32HexPadLower, .Base32HexPadUpper, .Base32Z => (source.len - 1) * 5 / 8,
+            .Base36Lower, .Base36Upper => source.len - 1,
+            .Base58Flickr, .Base58Btc => source.len - 1,
+            .Base64, .Base64Url, .Base64Pad, .Base64UrlPad => (source.len - 1) * 3 / 4,
+            .Base256Emoji => (source.len - 4) / 4, // First emoji is the multibase prefix
+        };
+    }
+
     const identity = struct {
         pub fn encode(dest: []u8, source: []const u8) []const u8 {
             @memcpy(dest[0..source.len], source);
@@ -834,7 +897,7 @@ pub const MultiBaseCodec = enum {
         }
     };
 
-    const base58 = struct {
+    pub const base58 = struct {
         const ALPHABET_FLICKR = "123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ";
         const ALPHABET_BTC = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
         const Vec = @Vector(16, u8);

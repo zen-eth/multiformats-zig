@@ -105,7 +105,7 @@ pub fn Multihash(comptime S: usize) type {
         }
 
         pub fn toBytes(self: Self, allocator: std.mem.Allocator) ![]u8 {
-            const bytes = try allocator.alloc(u8, self.size);
+            const bytes = try allocator.alloc(u8, self.encodedLen());
             var stream = std.io.fixedBufferStream(bytes);
             const written = try self.write(stream.writer());
             std.debug.assert(written == bytes.len);
@@ -115,15 +115,37 @@ pub fn Multihash(comptime S: usize) type {
 }
 
 /// MultihashDigest is a generic type that can be used to create a Multihash from a given input.
-pub fn MultihashDigest(comptime T: type, comptime alloc_size: usize) type {
+pub fn MultihashDigest(comptime T: type) type {
+    const DigestSize = struct {
+        fn getSize(comptime code: T) comptime_int {
+            return switch (code) {
+                .SHA2_256 => 32,
+                .SHA2_512 => 64,
+                .SHA3_224 => 28,
+                .SHA3_256 => 32,
+                .SHA3_384 => 48,
+                .SHA3_512 => 64,
+                .KECCAK_224 => 28,
+                .KECCAK_256 => 32,
+                .KECCAK_384 => 48,
+                .KECCAK_512 => 64,
+                .BLAKE2B_256 => 32,
+                .BLAKE2B_512 => 64,
+                .BLAKE2S_128 => 16,
+                .BLAKE2S_256 => 32,
+                .BLAKE3 => 64,
+            };
+        }
+    };
+
     return struct {
-        pub fn digest(code: T, input: []const u8) !Multihash(alloc_size) {
+        pub fn digest(comptime code: T, input: []const u8) !Multihash(DigestSize.getSize(code)) {
             var hasher = Hasher.init(code);
             try hasher.update(input);
             const digest_bytes = switch (hasher) {
                 inline else => |*h| h.finalize()[0..],
             };
-            return try Multihash(alloc_size).wrap(try Multicodec.fromCode(@intFromEnum(code)), digest_bytes);
+            return try Multihash(DigestSize.getSize(code)).wrap(try Multicodec.fromCode(@intFromEnum(code)), digest_bytes);
         }
     };
 }
@@ -191,7 +213,7 @@ pub const MultihashCodecs = enum(u64) {
     BLAKE2S_256 = Multicodec.BLAKE2S_256.getCode(),
     BLAKE3 = Multicodec.BLAKE3.getCode(),
 
-    pub usingnamespace MultihashDigest(@This(), 64);
+    pub usingnamespace MultihashDigest(@This());
 };
 
 /// Sha2_256 is a struct that represents the SHA2-256 hash algorithm.
