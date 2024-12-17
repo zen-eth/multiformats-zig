@@ -130,7 +130,7 @@ pub fn main() !void {
         try writer.writeAll("        };\n    }\n\n");
 
         // Write fromString function
-        try writer.writeAll("    pub fn fromString(name: []const u8) !Multicodec {\n        const name_map = std.ComptimeStringMap(Multicodec, .{\n");
+        try writer.writeAll("    pub fn fromString(name: []const u8) !Multicodec {\n        const name_map = std.StaticStringMap(Multicodec).initComptime(.{\n");
         for (codecs.items) |codec| {
             const name = try std.ascii.allocUpperString(allocator, codec.name);
             defer allocator.free(name);

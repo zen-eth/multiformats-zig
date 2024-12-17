@@ -1204,7 +1204,7 @@ pub const Multicodec = enum(u64) {
     }
 
     pub fn fromString(name: []const u8) !Multicodec {
-        const name_map = std.ComptimeStringMap(Multicodec, .{
+        const name_map = std.StaticStringMap(Multicodec).initComptime(.{
             .{ "identity", .IDENTITY },
             .{ "cidv1", .CIDV1 },
             .{ "cidv2", .CIDV2 },
