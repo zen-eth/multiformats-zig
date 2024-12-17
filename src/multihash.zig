@@ -95,8 +95,8 @@ pub fn Multihash(comptime S: usize) type {
 
         /// read reads a Multihash from a reader.
         pub fn read(reader: anytype) !Self {
-            const code = try varint.decode_stream(reader, u64);
-            const size = try varint.decode_stream(reader, u8);
+            const code = try varint.decodeStream(reader, u64);
+            const size = try varint.decodeStream(reader, u8);
 
             if (size > S) {
                 return error.InvalidSize;

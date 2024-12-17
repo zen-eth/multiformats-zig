@@ -1,12 +1,14 @@
 const std = @import("std");
 const testing = std.testing;
 
-pub const Error = error{
+/// VarintError represents an error that occurred during varint encoding or decoding.
+pub const VarintError = error{
     Insufficient,
     Overflow,
     NotMinimal,
 };
 
+/// encode encodes a number into a varint and writes it to the buffer.
 pub fn encode(comptime T: type, number: T, buffer: []u8) []u8 {
     var n = number;
     var i: usize = 0;
@@ -24,6 +26,7 @@ pub fn encode(comptime T: type, number: T, buffer: []u8) []u8 {
     return buffer[0 .. i + 1];
 }
 
+/// decode decodes a varint from a buffer and returns the decoded number and the remaining bytes.
 pub fn decode(comptime T: type, buffer: []const u8) !struct { value: T, remaining: []const u8 } {
     var value: T = 0;
     var i: usize = 0;
@@ -35,7 +38,7 @@ pub fn decode(comptime T: type, buffer: []const u8) !struct { value: T, remainin
         if (!isLast(b)) {
             continuation_bytes += 1;
             if (continuation_bytes >= maxBytesForType(T)) {
-                return Error.Overflow;
+                return VarintError.Overflow;
             }
         }
 
@@ -44,7 +47,7 @@ pub fn decode(comptime T: type, buffer: []const u8) !struct { value: T, remainin
 
         if (isLast(b)) {
             if (b == 0 and i > 0) {
-                return Error.NotMinimal;
+                return VarintError.NotMinimal;
             }
             return .{
                 .value = value,
@@ -55,7 +58,7 @@ pub fn decode(comptime T: type, buffer: []const u8) !struct { value: T, remainin
         i += 1;
     }
 
-    return Error.Insufficient;
+    return VarintError.Insufficient;
 }
 
 fn isLast(b: u8) bool {
@@ -78,18 +81,21 @@ fn maxBytesForType(comptime T: type) usize {
     };
 }
 
+/// bufferSize returns the size of the buffer needed to encode a varint.
 pub fn bufferSize(comptime T: type) usize {
     return maxBytesForType(T);
 }
 
-pub fn encode_stream(writer: anytype, comptime T: type, number: T) !usize {
+/// encodeStream encodes a number into a varint and writes it to the writer.
+pub fn encodeStream(writer: anytype, comptime T: type, number: T) !usize {
     var buf: [bufferSize(T)]u8 = undefined;
     const encoded = encode(T, number, &buf);
     try writer.writeAll(encoded);
     return encoded.len;
 }
 
-pub fn decode_stream(reader: anytype, comptime T: type) !T {
+/// decodeStream decodes a varint from the reader and returns the decoded number.
+pub fn decodeStream(reader: anytype, comptime T: type) !T {
     var value: T = 0;
     var i: usize = 0;
     var continuation_bytes: usize = 0;
@@ -100,7 +106,7 @@ pub fn decode_stream(reader: anytype, comptime T: type) !T {
         if (!isLast(byte)) {
             continuation_bytes += 1;
             if (continuation_bytes >= maxBytesForType(T)) {
-                return Error.Overflow;
+                return VarintError.Overflow;
             }
         }
 
@@ -109,7 +115,7 @@ pub fn decode_stream(reader: anytype, comptime T: type) !T {
 
         if (isLast(byte)) {
             if (byte == 0 and i > 0) {
-                return Error.NotMinimal;
+                return VarintError.NotMinimal;
             }
             return value;
         }
@@ -245,12 +251,12 @@ test "stream_identity" {
 
     for (numbers) |n| {
         // Encode to stream
-        const written = try encode_stream(buf.writer(), u64, n);
+        const written = try encodeStream(buf.writer(), u64, n);
         try testing.expectEqual(written, encode(u64, n, buf.items[0..]).len);
 
         // Decode from stream
         var stream = std.io.fixedBufferStream(buf.items);
-        const decoded = try decode_stream(stream.reader(), u64);
+        const decoded = try decodeStream(stream.reader(), u64);
 
         try testing.expectEqual(n, decoded);
         buf.clearRetainingCapacity();

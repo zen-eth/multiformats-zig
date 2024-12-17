@@ -98,8 +98,8 @@ pub fn Cid(comptime S: usize) type {
         }
 
         pub fn writeBytesV1(self: *const Self, writer: anytype) !usize {
-            const version_written = try varint.encode_stream(writer, u64, self.version.toInt());
-            const codec_written = try varint.encode_stream(writer, u64, self.codec);
+            const version_written = try varint.encodeStream(writer, u64, self.version.toInt());
+            const codec_written = try varint.encodeStream(writer, u64, self.codec);
 
             var written: usize = version_written + codec_written;
             written += try self.hash.write(writer);
@@ -119,8 +119,8 @@ pub fn Cid(comptime S: usize) type {
         }
 
         pub fn readBytes(allocator: Allocator, reader: anytype) !Self {
-            const version = try varint.decode_stream(reader, u64);
-            const codec = try varint.decode_stream(reader, u64);
+            const version = try varint.decodeStream(reader, u64);
+            const codec = try varint.decodeStream(reader, u64);
 
             if (version == 0x12 and codec == 0x20) {
                 var digest: [32]u8 = undefined;

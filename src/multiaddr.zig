@@ -188,87 +188,87 @@ pub const Protocol = union(enum) {
     pub fn writeBytes(self: Protocol, writer: anytype) !void {
         switch (self) {
             .Ip4 => |addr| {
-                _ = try uvarint.encode_stream(writer, u32, IP4);
+                _ = try uvarint.encodeStream(writer, u32, IP4);
                 const bytes = std.mem.asBytes(&addr.sa.addr);
                 try writer.writeAll(bytes);
             },
             .Ip6 => |addr| {
-                _ = try uvarint.encode_stream(writer, u32, IP6);
+                _ = try uvarint.encodeStream(writer, u32, IP6);
                 const bytes = std.mem.asBytes(&addr.sa.addr);
                 try writer.writeAll(bytes);
             },
             .Tcp => |port| {
-                _ = try uvarint.encode_stream(writer, u32, TCP);
+                _ = try uvarint.encodeStream(writer, u32, TCP);
                 var port_bytes: [2]u8 = undefined;
                 std.mem.writeInt(u16, &port_bytes, port, .big);
                 try writer.writeAll(&port_bytes);
             },
             .Udp => |port| {
-                _ = try uvarint.encode_stream(writer, u32, UDP);
+                _ = try uvarint.encodeStream(writer, u32, UDP);
                 var port_bytes: [2]u8 = undefined;
                 std.mem.writeInt(u16, &port_bytes, port, .big);
                 try writer.writeAll(&port_bytes);
             },
             .Ws => {
-                _ = try uvarint.encode_stream(writer, u32, WS);
+                _ = try uvarint.encodeStream(writer, u32, WS);
             },
             .Wss => {
-                _ = try uvarint.encode_stream(writer, u32, WSS);
+                _ = try uvarint.encodeStream(writer, u32, WSS);
             },
             .Dns => |name| {
-                _ = try uvarint.encode_stream(writer, u32, DNS);
-                _ = try uvarint.encode_stream(writer, usize, name.len);
+                _ = try uvarint.encodeStream(writer, u32, DNS);
+                _ = try uvarint.encodeStream(writer, usize, name.len);
                 try writer.writeAll(name);
             },
             .Unix => |path| {
-                _ = try uvarint.encode_stream(writer, u32, UNIX);
-                _ = try uvarint.encode_stream(writer, usize, path.len);
+                _ = try uvarint.encodeStream(writer, u32, UNIX);
+                _ = try uvarint.encodeStream(writer, usize, path.len);
                 try writer.writeAll(path);
             },
             .Http => {
-                _ = try uvarint.encode_stream(writer, u32, HTTP);
+                _ = try uvarint.encodeStream(writer, u32, HTTP);
             },
             .Https => {
-                _ = try uvarint.encode_stream(writer, u32, HTTPS);
+                _ = try uvarint.encodeStream(writer, u32, HTTPS);
             },
             .Dns4 => |name| {
-                _ = try uvarint.encode_stream(writer, u32, DNS4);
-                _ = try uvarint.encode_stream(writer, usize, name.len);
+                _ = try uvarint.encodeStream(writer, u32, DNS4);
+                _ = try uvarint.encodeStream(writer, usize, name.len);
                 try writer.writeAll(name);
             },
             .Dns6 => |name| {
-                _ = try uvarint.encode_stream(writer, u32, DNS6);
-                _ = try uvarint.encode_stream(writer, usize, name.len);
+                _ = try uvarint.encodeStream(writer, u32, DNS6);
+                _ = try uvarint.encodeStream(writer, usize, name.len);
                 try writer.writeAll(name);
             },
             .Dnsaddr => |name| {
-                _ = try uvarint.encode_stream(writer, u32, DNSADDR);
-                _ = try uvarint.encode_stream(writer, usize, name.len);
+                _ = try uvarint.encodeStream(writer, u32, DNSADDR);
+                _ = try uvarint.encodeStream(writer, usize, name.len);
                 try writer.writeAll(name);
             },
             .Dccp => |port| {
-                _ = try uvarint.encode_stream(writer, u32, DCCP);
+                _ = try uvarint.encodeStream(writer, u32, DCCP);
                 var port_bytes: [2]u8 = undefined;
                 std.mem.writeInt(u16, &port_bytes, port, .big);
                 try writer.writeAll(&port_bytes);
             },
             .Sctp => |port| {
-                _ = try uvarint.encode_stream(writer, u32, SCTP);
+                _ = try uvarint.encodeStream(writer, u32, SCTP);
                 var port_bytes: [2]u8 = undefined;
                 std.mem.writeInt(u16, &port_bytes, port, .big);
                 try writer.writeAll(&port_bytes);
             },
             .Quic => {
-                _ = try uvarint.encode_stream(writer, u32, QUIC);
+                _ = try uvarint.encodeStream(writer, u32, QUIC);
             },
             .QuicV1 => {
-                _ = try uvarint.encode_stream(writer, u32, QUIC_V1);
+                _ = try uvarint.encodeStream(writer, u32, QUIC_V1);
             },
             .P2pCircuit => {
-                _ = try uvarint.encode_stream(writer, u32, P2P_CIRCUIT);
+                _ = try uvarint.encodeStream(writer, u32, P2P_CIRCUIT);
             },
             .WebTransport => {
-                _ = try uvarint.encode_stream(writer, u32, WEBTRANSPORT);
+                _ = try uvarint.encodeStream(writer, u32, WEBTRANSPORT);
             },
         }
     }
