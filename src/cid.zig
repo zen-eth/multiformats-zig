@@ -7,7 +7,8 @@ const varint = @import("unsigned_varint.zig");
 const multibase = @import("multibase.zig");
 const MultiBaseCodec = multibase.MultiBaseCodec;
 
-pub const Error = error{
+/// CidError represents an error that occurred during CID parsing.
+pub const CidError = error{
     UnknownCodec,
     InputTooShort,
     ParsingError,
@@ -19,31 +20,37 @@ pub const Error = error{
     InvalidExplicitCidV0,
 };
 
+/// CidVersion represents the version of the CID.
 pub const CidVersion = enum(u64) {
     V0 = 0,
     V1 = 1,
 
+    /// Checks if the given data is a valid V0 CID string.
     pub fn isV0Str(data: []const u8) bool {
         return data.len == 46 and std.mem.startsWith(u8, data, "Qm");
     }
 
+    /// Checks if the given data is a valid V0 CID binary.
     pub fn isV0Binary(data: []const u8) bool {
         return data.len == 34 and std.mem.startsWith(u8, data, &[_]u8{ 0x12, 0x20 });
     }
 
-    pub fn fromInt(value: u64) Error!CidVersion {
+    /// Converts a u64 to a CidVersion.
+    pub fn fromInt(value: u64) CidError!CidVersion {
         return switch (value) {
             0 => .V0,
             1 => .V1,
-            else => Error.InvalidCidVersion,
+            else => CidError.InvalidCidVersion,
         };
     }
 
+    /// Converts a CidVersion to a u64.
     pub fn toInt(self: CidVersion) u64 {
         return @as(u64, @intFromEnum(self));
     }
 };
 
+/// Cid represents a Content Identifier.
 pub fn Cid(comptime S: usize) type {
     return struct {
         version: CidVersion,
@@ -53,9 +60,10 @@ pub fn Cid(comptime S: usize) type {
 
         const Self = @This();
 
+        /// Creates a new V0 CID with the given allocator and hash.
         pub fn newV0(allocator: Allocator, hash: Multihash(32)) !Self {
             if (hash.getCode() != Multicodec.SHA2_256 or hash.getSize() != 32) {
-                return Error.InvalidCidV0Multihash;
+                return CidError.InvalidCidV0Multihash;
             }
 
             return Cid(32){
@@ -66,6 +74,7 @@ pub fn Cid(comptime S: usize) type {
             };
         }
 
+        /// Creates a new V1 CID with the given allocator, codec, and hash.
         pub fn newV1(allocator: Allocator, codec: u64, hash: Multihash(S)) !Self {
             return Cid(S){
                 .version = .V1,
@@ -75,11 +84,12 @@ pub fn Cid(comptime S: usize) type {
             };
         }
 
+        /// Initializes a new CID with the given allocator, version, codec, and hash.
         pub fn init(allocator: Allocator, version: CidVersion, codec: u64, hash: Multihash(S)) !Self {
             switch (version) {
                 .V0 => {
                     if (codec != Multicodec.DAG_PB.getCode()) {
-                        return Error.InvalidCidV0Codec;
+                        return CidError.InvalidCidV0Codec;
                     }
 
                     return newV0(allocator, hash);
@@ -97,6 +107,7 @@ pub fn Cid(comptime S: usize) type {
                 std.mem.eql(u8, self.hash.getDigest(), other.hash.getDigest());
         }
 
+        /// writes the CID to the given writer.
         pub fn writeBytesV1(self: *const Self, writer: anytype) !usize {
             const version_written = try varint.encodeStream(writer, u64, self.version.toInt());
             const codec_written = try varint.encodeStream(writer, u64, self.codec);
@@ -106,18 +117,20 @@ pub fn Cid(comptime S: usize) type {
             return written;
         }
 
-        pub fn intoV1(self: Self) !Self {
+        /// Converts a V0 CID to a V1 CID.
+        pub fn intoV1(self: *const Self) !Self {
             return switch (self.version) {
                 .V0 => {
                     if (self.codec != @intFromEnum(Multicodec.DAG_PB)) {
-                        return Error.InvalidCidV0Codec;
+                        return CidError.InvalidCidV0Codec;
                     }
                     return newV1(self.allocator, self.codec, self.hash);
                 },
-                .V1 => self,
+                .V1 => self.*,
             };
         }
 
+        /// Reads a CID from the given reader.
         pub fn readBytes(allocator: Allocator, reader: anytype) !Self {
             const version = try varint.decodeStream(reader, u64);
             const codec = try varint.decodeStream(reader, u64);
@@ -132,7 +145,7 @@ pub fn Cid(comptime S: usize) type {
 
             const ver = try CidVersion.fromInt(version);
             switch (ver) {
-                .V0 => return Error.InvalidExplicitCidV0,
+                .V0 => return CidError.InvalidExplicitCidV0,
                 .V1 => {
                     const mh = try Multihash(32).read(reader);
                     return Self.init(allocator, ver, codec, mh);
@@ -140,6 +153,7 @@ pub fn Cid(comptime S: usize) type {
             }
         }
 
+        /// Writes the CID to the given writer.
         pub fn writeBytes(self: *const Self, writer: anytype) !usize {
             return switch (self.version) {
                 .V0 => try self.hash.write(writer),
@@ -147,6 +161,7 @@ pub fn Cid(comptime S: usize) type {
             };
         }
 
+        /// Returns the length of the CID in bytes.
         pub fn encodedLen(self: Self) usize {
             return switch (self.version) {
                 .V0 => self.hash.encodedLen(),
@@ -162,6 +177,7 @@ pub fn Cid(comptime S: usize) type {
             };
         }
 
+        /// Converts the CID to a byte slice.
         pub fn toBytes(self: *const Self) ![]u8 {
             var bytes = std.ArrayList(u8).init(self.allocator);
             errdefer bytes.deinit();
@@ -172,14 +188,17 @@ pub fn Cid(comptime S: usize) type {
             return bytes.toOwnedSlice();
         }
 
+        /// Returns the hash of the CID.
         pub fn getHash(self: *const Self) []const u8 {
             return self.hash.getDigest();
         }
 
+        /// Returns the codec of the CID.
         pub fn getCodec(self: *const Self) u64 {
             return self.codec;
         }
 
+        /// Returns the version of the CID.
         pub fn getVersion(self: *const Self) CidVersion {
             return self.version;
         }
@@ -213,7 +232,8 @@ pub fn Cid(comptime S: usize) type {
             return dest;
         }
 
-        pub fn toString(self: Self) ![]const u8 {
+        /// Returns the CID as a string.
+        pub fn toString(self: *const Self) ![]const u8 {
             switch (self.version) {
                 .V0 => {
                     // For V0, always use Base58BTC
@@ -226,11 +246,12 @@ pub fn Cid(comptime S: usize) type {
             }
         }
 
+        /// Returns the CID as a string with the given base.
         pub fn toStringOfBase(self: *const Self, base: MultiBaseCodec) ![]const u8 {
             return switch (self.version) {
                 .V0 => {
                     if (base != .Base58Btc) {
-                        return Error.InvalidCidV0Base;
+                        return CidError.InvalidCidV0Base;
                     }
                     return self.toStringV0();
                 },
@@ -362,12 +383,12 @@ test "Cid error cases" {
 
     {
         const hash = try Multihash(32).wrap(Multicodec.SHA2_256, &[_]u8{0} ** 32);
-        try testing.expectError(Error.InvalidCidV0Codec, Cid(32).init(allocator, .V0, Multicodec.RAW.getCode(), hash));
+        try testing.expectError(CidError.InvalidCidV0Codec, Cid(32).init(allocator, .V0, Multicodec.RAW.getCode(), hash));
     }
 
     {
         const hash = try Multihash(32).wrap(Multicodec.SHA2_512, &[_]u8{0} ** 32);
-        try testing.expectError(Error.InvalidCidV0Multihash, Cid(32).newV0(allocator, hash));
+        try testing.expectError(CidError.InvalidCidV0Multihash, Cid(32).newV0(allocator, hash));
     }
 
     {
@@ -378,6 +399,6 @@ test "Cid error cases" {
                 allocator.free(str);
             } else |_| {}
         }
-        try testing.expectError(Error.InvalidCidV0Base, cid.toStringOfBase(.Base32Lower));
+        try testing.expectError(CidError.InvalidCidV0Base, cid.toStringOfBase(.Base32Lower));
     }
 }
