@@ -12,6 +12,7 @@ pub fn Multihash(comptime S: usize) type {
 
         const Self = @This();
 
+        /// wrap creates a new Multihash from a given code and digest.
         pub fn wrap(code: Multicodec, input_digest: []const u8) !Self {
             if (input_digest.len > S) {
                 return error.InvalidSize;
@@ -27,19 +28,23 @@ pub fn Multihash(comptime S: usize) type {
             };
         }
 
+        /// getCode returns the code of the Multihash.
         pub fn getCode(self: Self) Multicodec {
             return self.code;
         }
 
+        /// getSize returns the size of the Multihash.
         pub fn getSize(self: Self) u8 {
             return self.size;
         }
 
+        /// getDigest returns the digest of the Multihash.
         pub fn getDigest(self: Self) []const u8 {
             return self.digest[0..self.size];
         }
 
-        pub fn truncate(self: Self, new_size: u8) Self {
+        /// truncate creates a new Multihash with a truncated digest.
+        pub fn truncate(self: *const Self, new_size: u8) Self {
             return Self{
                 .code = self.code,
                 .size = @min(self.size, new_size),
@@ -47,7 +52,8 @@ pub fn Multihash(comptime S: usize) type {
             };
         }
 
-        pub fn resize(self: Self, comptime R: usize) !Multihash(R) {
+        /// resize creates a new Multihash with a resized digest.
+        pub fn resize(self: *const Self, comptime R: usize) !Multihash(R) {
             if (self.size > R) {
                 return error.InvalidSize;
             }
@@ -62,7 +68,7 @@ pub fn Multihash(comptime S: usize) type {
             };
         }
 
-        pub fn encodedLen(self: Self) usize {
+        pub fn encodedLen(self: *const Self) usize {
             var code_buf: [varint.bufferSize(u64)]u8 = undefined;
             const code_encoded = varint.encode(u64, self.code.getCode(), &code_buf);
 
@@ -72,7 +78,8 @@ pub fn Multihash(comptime S: usize) type {
             return code_encoded.len + size_encoded.len + self.size;
         }
 
-        pub fn write(self: Self, writer: anytype) !usize {
+        /// write writes the Multihash to a writer.
+        pub fn write(self: *const Self, writer: anytype) !usize {
             var code_buf: [varint.bufferSize(u64)]u8 = undefined;
             const code_encoded = varint.encode(u64, self.code.getCode(), &code_buf);
             try writer.writeAll(code_encoded);
@@ -86,6 +93,7 @@ pub fn Multihash(comptime S: usize) type {
             return code_encoded.len + size_encoded.len + self.size;
         }
 
+        /// read reads a Multihash from a reader.
         pub fn read(reader: anytype) !Self {
             const code = try varint.decode_stream(reader, u64);
             const size = try varint.decode_stream(reader, u8);
@@ -104,7 +112,8 @@ pub fn Multihash(comptime S: usize) type {
             };
         }
 
-        pub fn toBytes(self: Self, allocator: std.mem.Allocator) ![]u8 {
+        /// toBytes converts the Multihash to a byte slice.
+        pub fn toBytes(self: *const Self, allocator: std.mem.Allocator) ![]const u8 {
             const bytes = try allocator.alloc(u8, self.encodedLen());
             var stream = std.io.fixedBufferStream(bytes);
             const written = try self.write(stream.writer());
@@ -139,6 +148,7 @@ pub fn MultihashDigest(comptime T: type) type {
     };
 
     return struct {
+        /// digest creates a new Multihash from the given input.
         pub fn digest(comptime code: T, input: []const u8) !Multihash(DigestSize.getSize(code)) {
             var hasher = Hasher.init(code);
             try hasher.update(input);
@@ -150,7 +160,8 @@ pub fn MultihashDigest(comptime T: type) type {
     };
 }
 
-const Hasher = union(enum) {
+/// Multihash is a generic type that can be used to create a Multihash from a given input.
+pub const Hasher = union(enum) {
     sha2_256: Sha2_256,
     sha2_512: Sha2_512,
     sha3_224: Sha3_224,
@@ -167,6 +178,7 @@ const Hasher = union(enum) {
     blake2s256: Blake2s256,
     blake3: Blake3,
 
+    /// init initializes a new Hasher.
     pub fn init(code: MultihashCodecs) Hasher {
         return switch (code) {
             .SHA2_256 => .{ .sha2_256 = Sha2_256.init() },
@@ -187,6 +199,7 @@ const Hasher = union(enum) {
         };
     }
 
+    /// update updates the Hasher with the given data.
     pub fn update(self: *Hasher, data: []const u8) !void {
         switch (self.*) {
             inline else => |*h| try h.update(data),
@@ -221,14 +234,17 @@ pub const MultihashCodecs = enum(u64) {
 pub const Sha2_256 = struct {
     ctx: std.crypto.hash.sha2.Sha256,
 
+    /// init initializes a new Sha2_256.
     pub fn init() Sha2_256 {
         return .{ .ctx = std.crypto.hash.sha2.Sha256.init(.{}) };
     }
 
+    /// update updates the Sha2_256 with the given data.
     pub fn update(self: *Sha2_256, data: []const u8) !void {
         self.ctx.update(data);
     }
 
+    /// finalize finalizes the Sha2_256 and returns the digest.
     pub fn finalize(self: *Sha2_256) [32]u8 {
         return self.ctx.finalResult();
     }
@@ -239,14 +255,17 @@ pub const Sha2_256 = struct {
 pub const Sha2_512 = struct {
     ctx: std.crypto.hash.sha2.Sha512,
 
+    /// init initializes a new Sha2_512.
     pub fn init() Sha2_512 {
         return .{ .ctx = std.crypto.hash.sha2.Sha512.init(.{}) };
     }
 
+    /// update updates the Sha2_512 with the given data.
     pub fn update(self: *Sha2_512, data: []const u8) !void {
         self.ctx.update(data);
     }
 
+    /// finalize finalizes the Sha2_512 and returns the digest.
     pub fn finalize(self: *Sha2_512) [64]u8 {
         return self.ctx.finalResult();
     }
@@ -257,14 +276,17 @@ pub const Sha2_512 = struct {
 pub const Sha3_224 = struct {
     ctx: std.crypto.hash.sha3.Sha3_224,
 
+    /// init initializes a new Sha3_224.
     pub fn init() Sha3_224 {
         return .{ .ctx = std.crypto.hash.sha3.Sha3_224.init(.{}) };
     }
 
+    /// update updates the Sha3_224 with the given data.
     pub fn update(self: *Sha3_224, data: []const u8) !void {
         self.ctx.update(data);
     }
 
+    /// finalize finalizes the Sha3_224 and returns the digest.
     pub fn finalize(self: *Sha3_224) [28]u8 {
         var out = [_]u8{0} ** 28;
         self.ctx.final(&out);
@@ -277,14 +299,17 @@ pub const Sha3_224 = struct {
 pub const Sha3_256 = struct {
     ctx: std.crypto.hash.sha3.Sha3_256,
 
+    /// init initializes a new Sha3_256.
     pub fn init() Sha3_256 {
         return .{ .ctx = std.crypto.hash.sha3.Sha3_256.init(.{}) };
     }
 
+    /// update updates the Sha3_256 with the given data.
     pub fn update(self: *Sha3_256, data: []const u8) !void {
         self.ctx.update(data);
     }
 
+    /// finalize finalizes the Sha3_256 and returns the digest.
     pub fn finalize(self: *Sha3_256) [32]u8 {
         var out = [_]u8{0} ** 32;
         self.ctx.final(&out);
@@ -297,14 +322,17 @@ pub const Sha3_256 = struct {
 pub const Sha3_384 = struct {
     ctx: std.crypto.hash.sha3.Sha3_384,
 
+    /// init initializes a new Sha3_384.
     pub fn init() Sha3_384 {
         return .{ .ctx = std.crypto.hash.sha3.Sha3_384.init(.{}) };
     }
 
+    /// update updates the Sha3_384 with the given data.
     pub fn update(self: *Sha3_384, data: []const u8) !void {
         self.ctx.update(data);
     }
 
+    /// finalize finalizes the Sha3_384 and returns the digest.
     pub fn finalize(self: *Sha3_384) [48]u8 {
         var out = [_]u8{0} ** 48;
         self.ctx.final(&out);
@@ -317,14 +345,17 @@ pub const Sha3_384 = struct {
 pub const Sha3_512 = struct {
     ctx: std.crypto.hash.sha3.Sha3_512,
 
+    /// init initializes a new Sha3_512.
     pub fn init() Sha3_512 {
         return .{ .ctx = std.crypto.hash.sha3.Sha3_512.init(.{}) };
     }
 
+    /// update updates the Sha3_512 with the given data.
     pub fn update(self: *Sha3_512, data: []const u8) !void {
         self.ctx.update(data);
     }
 
+    /// finalize finalizes the Sha3_512 and returns the digest.
     pub fn finalize(self: *Sha3_512) [64]u8 {
         var out = [_]u8{0} ** 64;
         self.ctx.final(&out);
@@ -332,18 +363,22 @@ pub const Sha3_512 = struct {
     }
 };
 
-/// Keccak_256 is a struct that represents the Keccak-256 hash algorithm.
-/// It is used to implement the MultihashDigest trait for the Keccak-256 hash algorithm.
+/// Keccak-224 is a struct that represents the Keccak-224 hash algorithm.
+/// It is used to implement the MultihashDigest trait for the Keccak-224 hash algorithm.
 pub const Keccak_224 = struct {
     ctx: std.crypto.hash.sha3.Keccak(1600, 224, 0x01, 24),
+
+    /// init initializes a new Keccak_224.
     pub fn init() Keccak_224 {
         return .{ .ctx = std.crypto.hash.sha3.Keccak(1600, 224, 0x01, 24).init(.{}) };
     }
 
+    /// update updates the Keccak_224 with the given data.
     pub fn update(self: *Keccak_224, data: []const u8) !void {
         self.ctx.update(data);
     }
 
+    /// finalize finalizes the Keccak_224 and returns the digest.
     pub fn finalize(self: *Keccak_224) [28]u8 {
         var out = [_]u8{0} ** 28;
         self.ctx.final(&out);
@@ -356,14 +391,17 @@ pub const Keccak_224 = struct {
 pub const Keccak_256 = struct {
     ctx: std.crypto.hash.sha3.Keccak256,
 
+    /// init initializes a new Keccak_256.
     pub fn init() Keccak_256 {
         return .{ .ctx = std.crypto.hash.sha3.Keccak256.init(.{}) };
     }
 
+    /// update updates the Keccak_256 with the given data.
     pub fn update(self: *Keccak_256, data: []const u8) !void {
         self.ctx.update(data);
     }
 
+    /// finalize finalizes the Keccak_256 and returns the digest.
     pub fn finalize(self: *Keccak_256) [32]u8 {
         var out = [_]u8{0} ** 32;
         self.ctx.final(&out);
@@ -375,14 +413,18 @@ pub const Keccak_256 = struct {
 /// It is used to implement the MultihashDigest trait for the Keccak-384 hash algorithm.
 pub const Keccak_384 = struct {
     ctx: std.crypto.hash.sha3.Keccak(1600, 384, 0x01, 24),
+
+    /// init initializes a new Keccak_384.
     pub fn init() Keccak_384 {
         return .{ .ctx = std.crypto.hash.sha3.Keccak(1600, 384, 0x01, 24).init(.{}) };
     }
 
+    /// update updates the Keccak_384 with the given data.
     pub fn update(self: *Keccak_384, data: []const u8) !void {
         self.ctx.update(data);
     }
 
+    /// finalize finalizes the Keccak_384 and returns the digest.
     pub fn finalize(self: *Keccak_384) [48]u8 {
         var out = [_]u8{0} ** 48;
         self.ctx.final(&out);
@@ -395,14 +437,17 @@ pub const Keccak_384 = struct {
 pub const Keccak_512 = struct {
     ctx: std.crypto.hash.sha3.Keccak512,
 
+    /// init initializes a new Keccak_512.
     pub fn init() Keccak_512 {
         return .{ .ctx = std.crypto.hash.sha3.Keccak512.init(.{}) };
     }
 
+    /// update updates the Keccak_512 with the given data.
     pub fn update(self: *Keccak_512, data: []const u8) !void {
         self.ctx.update(data);
     }
 
+    /// finalize finalizes the Keccak_512 and returns the digest.
     pub fn finalize(self: *Keccak_512) [64]u8 {
         var out = [_]u8{0} ** 64;
         self.ctx.final(&out);
@@ -414,13 +459,18 @@ pub const Keccak_512 = struct {
 /// It is used to implement the MultihashDigest trait for the Blake2b-256 hash algorithm.
 pub const Blake2b256 = struct {
     ctx: std.crypto.hash.blake2.Blake2b256,
+
+    /// init initializes a new Blake2b256.
     pub fn init() Blake2b256 {
         return .{ .ctx = std.crypto.hash.blake2.Blake2b256.init(.{}) };
     }
 
+    /// update updates the Blake2b256 with the given data.
     pub fn update(self: *Blake2b256, data: []const u8) !void {
         self.ctx.update(data);
     }
+
+    /// finalize finalizes the Blake2b256 and returns the digest.
     pub fn finalize(self: *Blake2b256) [32]u8 {
         var out = [_]u8{0} ** 32;
         self.ctx.final(&out);
@@ -432,13 +482,18 @@ pub const Blake2b256 = struct {
 /// It is used to implement the MultihashDigest trait for the Blake2b-512 hash algorithm.
 pub const Blake2b512 = struct {
     ctx: std.crypto.hash.blake2.Blake2b512,
+
+    /// init initializes a new Blake2b512.
     pub fn init() Blake2b512 {
         return .{ .ctx = std.crypto.hash.blake2.Blake2b512.init(.{}) };
     }
 
+    /// update updates the Blake2b512 with the given data.
     pub fn update(self: *Blake2b512, data: []const u8) !void {
         self.ctx.update(data);
     }
+
+    /// finalize finalizes the Blake2b512 and returns the digest.
     pub fn finalize(self: *Blake2b512) [64]u8 {
         var out = [_]u8{0} ** 64;
         self.ctx.final(&out);
@@ -450,13 +505,18 @@ pub const Blake2b512 = struct {
 /// It is used to implement the MultihashDigest trait for the Blake2s-128 hash algorithm.
 pub const Blake2s128 = struct {
     ctx: std.crypto.hash.blake2.Blake2s128,
+
+    /// init initializes a new Blake2s128.
     pub fn init() Blake2s128 {
         return .{ .ctx = std.crypto.hash.blake2.Blake2s128.init(.{}) };
     }
 
+    /// update updates the Blake2s128 with the given data.
     pub fn update(self: *Blake2s128, data: []const u8) !void {
         self.ctx.update(data);
     }
+
+    /// finalize finalizes the Blake2s128 and returns the digest.
     pub fn finalize(self: *Blake2s128) [16]u8 {
         var out = [_]u8{0} ** 16;
         self.ctx.final(&out);
@@ -468,13 +528,18 @@ pub const Blake2s128 = struct {
 /// It is used to implement the MultihashDigest trait for the Blake2s-256 hash algorithm.
 pub const Blake2s256 = struct {
     ctx: std.crypto.hash.blake2.Blake2s256,
+
+    /// init initializes a new Blake2s256.
     pub fn init() Blake2s256 {
         return .{ .ctx = std.crypto.hash.blake2.Blake2s256.init(.{}) };
     }
 
+    /// update updates the Blake2s256 with the given data.
     pub fn update(self: *Blake2s256, data: []const u8) !void {
         self.ctx.update(data);
     }
+
+    /// finalize finalizes the Blake2s256 and returns the digest.
     pub fn finalize(self: *Blake2s256) [32]u8 {
         var out = [_]u8{0} ** 32;
         self.ctx.final(&out);
@@ -486,13 +551,18 @@ pub const Blake2s256 = struct {
 /// It is used to implement the MultihashDigest trait for the Blake3 hash algorithm.
 pub const Blake3 = struct {
     ctx: std.crypto.hash.Blake3,
+
+    /// init initializes a new Blake3.
     pub fn init() Blake3 {
         return .{ .ctx = std.crypto.hash.Blake3.init(.{}) };
     }
 
+    /// update updates the Blake3 with the given data.
     pub fn update(self: *Blake3, data: []const u8) !void {
         self.ctx.update(data);
     }
+
+    /// finalize finalizes the Blake3 and returns the digest.
     pub fn finalize(self: *Blake3) [64]u8 {
         var out = [_]u8{0} ** 64;
         self.ctx.final(&out);

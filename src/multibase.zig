@@ -38,8 +38,8 @@ pub const MultiBaseCodec = enum {
 
     /// Returns the code of the multibase encoding.
     /// The code is a byte slice that represents the multibase encoding.
-    pub fn code(self: MultiBaseCodec) []const u8 {
-        return switch (self) {
+    pub fn code(self: *const MultiBaseCodec) []const u8 {
+        return switch (self.*) {
             .Identity => "\x00",
             .Base2 => "0",
             .Base8 => "7",
@@ -70,11 +70,11 @@ pub const MultiBaseCodec = enum {
     /// Encodes a byte slice into a multibase string.
     /// The destination buffer must be large enough to hold the encoded string.
     /// Returns the encoded multibase string.
-    pub fn encode(self: MultiBaseCodec, dest: []u8, source: []const u8) []const u8 {
+    pub fn encode(self: *const MultiBaseCodec, dest: []u8, source: []const u8) []const u8 {
         const code_str = self.code();
         @memcpy(dest[0..code_str.len], code_str);
 
-        const encoded = switch (self) {
+        const encoded = switch (self.*) {
             .Identity => identity.encode(dest[code_str.len..], source),
             .Base2 => base2.encode(dest[code_str.len..], source),
             .Base8 => base8.encode(dest[code_str.len..], source),
@@ -107,8 +107,8 @@ pub const MultiBaseCodec = enum {
     /// Decodes a multibase string into a byte slice.
     /// The destination buffer must be large enough to hold the decoded byte slice.
     /// Returns the decoded byte slice.
-    pub fn decode(self: MultiBaseCodec, dest: []u8, source: []const u8) ![]const u8 {
-        return switch (self) {
+    pub fn decode(self: *const MultiBaseCodec, dest: []u8, source: []const u8) ![]const u8 {
+        return switch (self.*) {
             .Identity => identity.decode(dest, source),
             .Base2 => base2.decode(dest, source),
             .Base8 => base8.decode(dest, source),
@@ -149,10 +149,9 @@ pub const MultiBaseCodec = enum {
     }
 
     /// Calculates the size needed for encoding the given source bytes
-    pub fn calcSize(self: MultiBaseCodec, source: []const u8) usize {
+    pub fn calcSize(self: *const MultiBaseCodec, source: []const u8) usize {
         const code_len = self.code().len;
-        std.debug.print("code_len: {}\n", .{code_len});
-        return code_len + switch (self) {
+        return code_len + switch (self.*) {
             .Identity => source.len,
             .Base2 => source.len * 8,
             .Base8 => (source.len * 8 + 2) / 3,
@@ -196,8 +195,8 @@ pub const MultiBaseCodec = enum {
     }
 
     /// Calculates the maximum size needed for decoding the given encoded string
-    pub fn calcSizeForDecode(self: MultiBaseCodec, source: []const u8) usize {
-        return switch (self) {
+    pub fn calcSizeForDecode(self: *const MultiBaseCodec, source: []const u8) usize {
+        return switch (self.*) {
             .Identity => source.len - 1,
             .Base2 => (source.len - 1) / 8,
             .Base8 => (source.len - 1) * 3 / 8,
@@ -211,7 +210,7 @@ pub const MultiBaseCodec = enum {
         };
     }
 
-    const identity = struct {
+    pub const identity = struct {
         pub fn encode(dest: []u8, source: []const u8) []const u8 {
             @memcpy(dest[0..source.len], source);
             return dest[0..source.len];
@@ -223,7 +222,7 @@ pub const MultiBaseCodec = enum {
         }
     };
 
-    const base2 = struct {
+    pub const base2 = struct {
         const Vec = @Vector(16, u8);
         const ascii_zero: Vec = @splat('0');
         const ascii_one: Vec = @splat('1');
@@ -309,7 +308,7 @@ pub const MultiBaseCodec = enum {
         }
     };
 
-    const base8 = struct {
+    pub const base8 = struct {
         const Vec = @Vector(16, u8);
         const ascii_zero: Vec = @splat('0');
         const ascii_seven: Vec = @splat('7');
@@ -404,7 +403,7 @@ pub const MultiBaseCodec = enum {
         }
     };
 
-    const base10 = struct {
+    pub const base10 = struct {
         pub fn encode(dest: []u8, source: []const u8) []const u8 {
             if (source.len == 0) {
                 dest[0] = '0';
@@ -517,7 +516,7 @@ pub const MultiBaseCodec = enum {
         }
     };
 
-    const base16 = struct {
+    pub const base16 = struct {
         const ALPHABET_LOWER = "0123456789abcdef";
         const ALPHABET_UPPER = "0123456789ABCDEF";
         const Vec = @Vector(16, u8);
@@ -613,7 +612,7 @@ pub const MultiBaseCodec = enum {
         }
     };
 
-    const base32 = struct {
+    pub const base32 = struct {
         const ALPHABET_LOWER = "abcdefghijklmnopqrstuvwxyz234567";
         const ALPHABET_UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
         const ALPHABET_HEX_LOWER = "0123456789abcdefghijklmnopqrstuv";
@@ -721,7 +720,7 @@ pub const MultiBaseCodec = enum {
         }
     };
 
-    const base36 = struct {
+    pub const base36 = struct {
         const ALPHABET_LOWER = "0123456789abcdefghijklmnopqrstuvwxyz";
         const ALPHABET_UPPER = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
         const Vec = @Vector(16, u8);
@@ -1110,7 +1109,7 @@ pub const MultiBaseCodec = enum {
         }
     };
 
-    const base256emoji = struct {
+    pub const base256emoji = struct {
         const ALPHABET = "🚀🪐☄🛰🌌🌑🌒🌓🌔🌕🌖🌗🌘🌍🌏🌎🐉☀💻🖥💾💿😂❤😍🤣😊🙏💕😭😘👍😅👏😁🔥🥰💔💖💙😢🤔😆🙄💪😉☺👌🤗💜😔😎😇🌹🤦🎉💞✌✨🤷😱😌🌸🙌😋💗💚😏💛🙂💓🤩😄😀🖤😃💯🙈👇🎶😒🤭❣😜💋👀😪😑💥🙋😞😩😡🤪👊🥳😥🤤👉💃😳✋😚😝😴🌟😬🙃🍀🌷😻😓⭐✅🥺🌈😈🤘💦✔😣🏃💐☹🎊💘😠☝😕🌺🎂🌻😐🖕💝🙊😹🗣💫💀👑🎵🤞😛🔴😤🌼😫⚽🤙☕🏆🤫👈😮🙆🍻🍃🐶💁😲🌿🧡🎁⚡🌞🎈❌✊👋😰🤨😶🤝🚶💰🍓💢🤟🙁🚨💨🤬✈🎀🍺🤓😙💟🌱😖👶🥴▶➡❓💎💸⬇😨🌚🦋😷🕺⚠🙅😟😵👎🤲🤠🤧📌🔵💅🧐🐾🍒😗🤑🌊🤯🐷☎💧😯💆👆🎤🙇🍑❄🌴💣🐸💌📍🥀🤢👅💡💩👐📸👻🤐🤮🎼🥵🚩🍎🍊👼💍📣🥂";
         const Vec = @Vector(16, u8);
 
