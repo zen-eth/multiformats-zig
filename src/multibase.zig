@@ -6,6 +6,58 @@ pub const DecodeError = error{
     InvalidBaseString,
 };
 
+pub const DecodeResult = struct {
+    base: MultiBaseCodec,
+    data: []const u8,
+};
+
+pub fn decode(allocator: std.mem.Allocator, input: []const u8) !DecodeResult {
+    std.debug.print("\nDecode input: {s}", .{input});
+    std.debug.print("\nInput length: {d}", .{input.len});
+
+    if (input.len == 0) return error.InvalidBaseString;
+
+    const code = input[0 .. std.unicode.utf8ByteSequenceLength(input[0]) catch return error.InvalidBaseString];
+    const rest = input[code.len..];
+
+    std.debug.print("\nCode: {s}", .{code});
+    std.debug.print("\nRest: {s}", .{rest});
+
+    inline for (@typeInfo(MultiBaseCodec).@"enum".fields) |field| {
+        const codec = @field(MultiBaseCodec, field.name);
+        if (std.mem.eql(u8, codec.code(), code)) {
+            const max_len = codec.calcSizeForDecode(rest);
+            std.debug.print("\nCalculated max_len: {d}", .{max_len});
+
+            var dest = try allocator.alloc(u8, max_len);
+            errdefer allocator.free(dest);
+
+            const decoded = try codec.decode(dest, rest);
+            std.debug.print("\nDecoded length: {d}", .{decoded.len});
+            if (decoded.len < dest.len) {
+                dest = try allocator.realloc(dest, decoded.len);
+            }
+            return DecodeResult{
+                .base = codec,
+                .data = decoded,
+            };
+        }
+    }
+    return error.InvalidBaseString;
+}
+
+pub fn encode(allocator: std.mem.Allocator, base: MultiBaseCodec, input: []const u8) ![]u8 {
+    const needed_size = base.calcSize(input);
+    var dest = try allocator.alloc(u8, needed_size);
+    errdefer allocator.free(dest);
+
+    const encoded = base.encode(dest, input);
+    if (encoded.len < dest.len) {
+        dest = try allocator.realloc(dest, encoded.len);
+    }
+    return dest;
+}
+
 /// MultiBaseCodec represents a multibase encoding.
 /// It is used to decode a multibase string into a byte slice.
 /// It is used to encode a byte slice into a multibase string.
@@ -197,16 +249,16 @@ pub const MultiBaseCodec = enum {
     /// Calculates the maximum size needed for decoding the given encoded string
     pub fn calcSizeForDecode(self: *const MultiBaseCodec, source: []const u8) usize {
         return switch (self.*) {
-            .Identity => source.len - 1,
-            .Base2 => (source.len - 1) / 8,
-            .Base8 => (source.len - 1) * 3 / 8,
-            .Base10 => source.len - 1,
-            .Base16Lower, .Base16Upper => (source.len - 1) / 2,
-            .Base32Lower, .Base32Upper, .Base32HexLower, .Base32HexUpper, .Base32PadLower, .Base32PadUpper, .Base32HexPadLower, .Base32HexPadUpper, .Base32Z => (source.len - 1) * 5 / 8,
-            .Base36Lower, .Base36Upper => source.len - 1,
-            .Base58Flickr, .Base58Btc => source.len - 1,
-            .Base64, .Base64Url, .Base64Pad, .Base64UrlPad => (source.len - 1) * 3 / 4,
-            .Base256Emoji => (source.len - 4) / 4, // First emoji is the multibase prefix
+            .Identity => source.len,
+            .Base2 => source.len / 8,
+            .Base8 => source.len * 3 / 8,
+            .Base10 => source.len,
+            .Base16Lower, .Base16Upper => source.len / 2,
+            .Base32Lower, .Base32Upper, .Base32HexLower, .Base32HexUpper, .Base32PadLower, .Base32PadUpper, .Base32HexPadLower, .Base32HexPadUpper, .Base32Z => source.len * 5 / 8,
+            .Base36Lower, .Base36Upper => source.len,
+            .Base58Flickr, .Base58Btc => source.len,
+            .Base64, .Base64Url, .Base64Pad, .Base64UrlPad => source.len * 3 / 4,
+            .Base256Emoji => source.len / 4, // First emoji is the multibase prefix
         };
     }
 
@@ -2267,5 +2319,65 @@ test "Base.encode/decode base256emoji" {
         const source = "🚀🚀🚀🏃✋🌈😅🌷🤤😻🌟😅👏";
         const decoded = try MultiBaseCodec.Base256Emoji.decode(dest[0..], source[4..]);
         try testing.expectEqualStrings("\x00\x00yes mani !", decoded);
+    }
+}
+
+test "multibase encode/decode" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // Test basic encoding/decoding
+    {
+        const input = "hello world";
+        const encoded = try encode(allocator, .Base58Btc, input);
+        defer allocator.free(encoded);
+        try testing.expectEqualStrings("zStV1DL6CwTryKyV", encoded);
+
+        const decoded = try decode(allocator, encoded);
+        defer allocator.free(decoded.data);
+        try testing.expectEqual(MultiBaseCodec.Base58Btc, decoded.base);
+        try testing.expectEqualStrings(input, decoded.data);
+    }
+
+    // Test with different bases
+    {
+        const input = "Hello World!";
+
+        // Base32
+        const b32_encoded = try encode(allocator, .Base32Lower, input);
+        defer allocator.free(b32_encoded);
+        try testing.expectEqualStrings("bjbswy3dpeblw64tmmqqq", b32_encoded);
+
+        const b32_decoded = try decode(allocator, b32_encoded);
+        defer allocator.free(b32_decoded.data);
+        try testing.expectEqual(MultiBaseCodec.Base32Lower, b32_decoded.base);
+        try testing.expectEqualStrings(input, b32_decoded.data);
+
+        // Base64
+        const b64_encoded = try encode(allocator, .Base64, input);
+        defer allocator.free(b64_encoded);
+        try testing.expectEqualStrings("mSGVsbG8gV29ybGQh", b64_encoded);
+
+        const b64_decoded = try decode(allocator, b64_encoded);
+        defer allocator.free(b64_decoded.data);
+        try testing.expectEqual(MultiBaseCodec.Base64, b64_decoded.base);
+        try testing.expectEqualStrings(input, b64_decoded.data);
+    }
+
+    // Test error cases
+    {
+        // Empty input
+        try testing.expectError(error.InvalidBaseString, decode(allocator, ""));
+
+        // Invalid base prefix
+        try testing.expectError(error.InvalidBaseString, decode(allocator, "1abc"));
+
+        // Invalid characters for base
+        const invalid = try encode(allocator, .Base32Lower, "test");
+        defer allocator.free(invalid);
+        var corrupted = try allocator.dupe(u8, invalid);
+        defer allocator.free(corrupted);
+        corrupted[1] = '!'; // Invalid character for base32
+        try testing.expectError(error.InvalidChar, decode(allocator, corrupted));
     }
 }
