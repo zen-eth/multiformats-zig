@@ -29,17 +29,17 @@ pub fn Multihash(comptime S: usize) type {
         }
 
         /// getCode returns the code of the Multihash.
-        pub fn getCode(self: Self) Multicodec {
+        pub fn getCode(self: *const Self) Multicodec {
             return self.code;
         }
 
         /// getSize returns the size of the Multihash.
-        pub fn getSize(self: Self) u8 {
+        pub fn getSize(self: *const Self) u8 {
             return self.size;
         }
 
         /// getDigest returns the digest of the Multihash.
-        pub fn getDigest(self: Self) []const u8 {
+        pub fn getDigest(self: *const Self) []const u8 {
             return self.digest[0..self.size];
         }
 

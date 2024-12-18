@@ -12,38 +12,29 @@ pub const DecodeResult = struct {
 };
 
 pub fn decode(allocator: std.mem.Allocator, input: []const u8) !DecodeResult {
-    std.debug.print("\nDecode input: {s}", .{input});
-    std.debug.print("\nInput length: {d}", .{input.len});
-
     if (input.len == 0) return error.InvalidBaseString;
 
     const code = input[0 .. std.unicode.utf8ByteSequenceLength(input[0]) catch return error.InvalidBaseString];
     const rest = input[code.len..];
 
-    std.debug.print("\nCode: {s}", .{code});
-    std.debug.print("\nRest: {s}", .{rest});
-
     inline for (@typeInfo(MultiBaseCodec).@"enum".fields) |field| {
         const codec = @field(MultiBaseCodec, field.name);
         if (std.mem.eql(u8, codec.code(), code)) {
             const max_len = codec.calcSizeForDecode(rest);
-            std.debug.print("\nCalculated max_len: {d}", .{max_len});
-
             var dest = try allocator.alloc(u8, max_len);
             errdefer allocator.free(dest);
 
             const decoded = try codec.decode(dest, rest);
-            std.debug.print("\nDecoded length: {d}", .{decoded.len});
             if (decoded.len < dest.len) {
                 dest = try allocator.realloc(dest, decoded.len);
             }
             return DecodeResult{
                 .base = codec,
-                .data = decoded,
+                .data = dest[0..decoded.len],
             };
         }
     }
-    return error.InvalidBaseString;
+    return DecodeError.InvalidBaseString;
 }
 
 pub fn encode(allocator: std.mem.Allocator, base: MultiBaseCodec, input: []const u8) ![]u8 {
@@ -55,7 +46,7 @@ pub fn encode(allocator: std.mem.Allocator, base: MultiBaseCodec, input: []const
     if (encoded.len < dest.len) {
         dest = try allocator.realloc(dest, encoded.len);
     }
-    return dest;
+    return dest[0..encoded.len];
 }
 
 /// MultiBaseCodec represents a multibase encoding.
@@ -319,7 +310,7 @@ pub const MultiBaseCodec = enum {
                 const chunk = @as(Vec, source[i..][0..16].*);
                 const is_valid = @reduce(.And, chunk >= ascii_zero) and
                     @reduce(.And, chunk <= ascii_one);
-                if (!is_valid) return error.InvalidChar;
+                if (!is_valid) return DecodeError.InvalidChar;
             }
 
             // Process 16 bits (2 bytes) at once
@@ -339,7 +330,7 @@ pub const MultiBaseCodec = enum {
             var bits: u4 = 0;
             while (i < source.len) : (i += 1) {
                 const c = source[i];
-                if (c < '0' or c > '1') return error.InvalidChar;
+                if (c < '0' or c > '1') return DecodeError.InvalidChar;
 
                 current_byte = (current_byte << 1) | (c - '0');
                 bits += 1;
@@ -1240,10 +1231,10 @@ pub const MultiBaseCodec = enum {
             var i: usize = 0;
 
             while (i < source.len) {
-                const len = @as(usize, std.unicode.utf8ByteSequenceLength(source[i]) catch return error.InvalidBaseString);
-                const codepoint = std.unicode.utf8Decode(source[i..][0..len]) catch return error.InvalidBaseString;
+                const len = @as(usize, std.unicode.utf8ByteSequenceLength(source[i]) catch return DecodeError.InvalidBaseString);
+                const codepoint = std.unicode.utf8Decode(source[i..][0..len]) catch return DecodeError.InvalidBaseString;
                 const byte = REVERSE_LOOKUP[codepoint];
-                if (byte == 0xFF) return error.InvalidBaseString;
+                if (byte == 0xFF) return DecodeError.InvalidBaseString;
                 dest[dest_index] = byte;
                 dest_index += 1;
                 i += len;
@@ -2367,10 +2358,10 @@ test "multibase encode/decode" {
     // Test error cases
     {
         // Empty input
-        try testing.expectError(error.InvalidBaseString, decode(allocator, ""));
+        try testing.expectError(DecodeError.InvalidBaseString, decode(allocator, ""));
 
         // Invalid base prefix
-        try testing.expectError(error.InvalidBaseString, decode(allocator, "1abc"));
+        try testing.expectError(DecodeError.InvalidBaseString, decode(allocator, "1abc"));
 
         // Invalid characters for base
         const invalid = try encode(allocator, .Base32Lower, "test");
