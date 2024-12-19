@@ -93,6 +93,12 @@ pub fn Multihash(comptime S: usize) type {
             return code_encoded.len + size_encoded.len + self.size;
         }
 
+        /// readBytes reads a Multihash from a byte slice.
+        pub fn readBytes(bytes: []const u8) !Self {
+            var stream = std.io.fixedBufferStream(bytes);
+            return try Self.read(stream.reader());
+        }
+
         /// read reads a Multihash from a reader.
         pub fn read(reader: anytype) !Self {
             const code = try varint.decodeStream(reader, u64);
@@ -815,4 +821,13 @@ test "blake3 hash operations" {
     var out = [_]u8{0} ** 64;
     hash1.final(&out);
     try testing.expectEqualSlices(u8, &out, hash.getDigest());
+}
+
+test "multihash readBytes" {
+    const input = [_]u8{ 0x12, 0x0a, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+    var mh = try Multihash(32).readBytes(&input);
+
+    try testing.expectEqual(mh.getCode().getCode(), 0x12);
+    try testing.expectEqual(mh.getSize(), 10);
+    try testing.expectEqualSlices(u8, mh.getDigest(), input[2..]);
 }
