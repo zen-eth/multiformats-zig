@@ -18,7 +18,7 @@ zig build-exe src/generate.zig
 
 ## Add to your project
 ```bash
-zig fetch --save https://github.com/optimism-java/multiformats-zig/archive/main.tar.gz
+zig fetch --save https://github.com/zen-eth/multiformats-zig/archive/main.tar.gz
 ```
 
 ## Usage
