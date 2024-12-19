@@ -2,8 +2,8 @@
 //! you are making an executable, the convention is to delete this file and
 //! start with main.zig instead.
 pub const multicodec = @import("multicodec.zig");
-pub const multihash_impls = @import("multihash.zig");
-pub const unsigned_varint = @import("unsigned_varint.zig");
+pub const multihash = @import("multihash.zig");
+pub const uvarint = @import("unsigned_varint.zig");
 pub const multibase = @import("multibase.zig");
 pub const multiaddr = @import("multiaddr.zig");
 pub const cid = @import("cid.zig");
