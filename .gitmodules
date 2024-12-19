@@ -1,9 +1,6 @@
 [submodule "src/spec/multicodec"]
 	path = src/spec/multicodec
 	url = https://github.com/multiformats/multicodec
-[submodule "src/spec/multicodec"]
-	path = src/spec/rust-multiaddr
-	url = https://github.com/multiformats/rust-multiaddr
 [submodule "src/spec/rust-multiaddr"]
 	path = src/spec/rust-multiaddr
 	url = https://github.com/multiformats/rust-multiaddr
