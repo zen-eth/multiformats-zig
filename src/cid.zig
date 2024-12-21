@@ -231,9 +231,9 @@ pub fn Cid(comptime S: usize) type {
             const needed_size = MultiBaseCodec.Base58Btc.calcSize(bytes) - 1; // -1 for remove the multibase prefix 'z'
             const dest = try self.allocator.alloc(u8, needed_size);
             errdefer self.allocator.free(dest);
-            
+
             const encoded = MultiBaseCodec.base58.encodeBtc(dest, bytes);
-            
+
             if (encoded.len < dest.len) {
                 // Shrink allocation to exact size if needed
                 return self.allocator.realloc(dest, encoded.len);
@@ -248,7 +248,7 @@ pub fn Cid(comptime S: usize) type {
             const needed_size = MultiBaseCodec.Base32Lower.calcSize(bytes);
             const dest = try self.allocator.alloc(u8, needed_size);
             errdefer self.allocator.free(dest);
-            
+
             const encoded = MultiBaseCodec.Base32Lower.encode(dest, bytes);
             if (encoded.len < dest.len) {
                 // Shrink allocation to exact size if needed
@@ -281,7 +281,7 @@ pub fn Cid(comptime S: usize) type {
                     const needed_size = base.calcSize(bytes);
                     const dest = try self.allocator.alloc(u8, needed_size);
                     errdefer self.allocator.free(dest);
-                    
+
                     const encoded = base.encode(dest, bytes);
                     if (encoded.len < dest.len) {
                         // Shrink allocation to exact size if needed
@@ -311,7 +311,7 @@ pub fn Cid(comptime S: usize) type {
                 const needed_size = MultiBaseCodec.Base58Btc.calcSizeForDecode(hash);
                 var dest = try allocator.alloc(u8, needed_size);
                 errdefer allocator.free(dest);
-                
+
                 const result = try MultiBaseCodec.Base58Btc.decode(dest, hash);
                 if (result.len < dest.len) {
                     dest = try allocator.realloc(dest, result.len);
