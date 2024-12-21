@@ -185,6 +185,7 @@ pub const Protocol = union(enum) {
             else => Error.UnknownProtocolId,
         };
     }
+
     pub fn writeBytes(self: Protocol, writer: anytype) !void {
         switch (self) {
             .Ip4 => |addr| {

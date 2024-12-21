@@ -26,7 +26,11 @@ pub fn decode(allocator: std.mem.Allocator, input: []const u8) !DecodeResult {
 
             const decoded = try codec.decode(dest, rest);
             if (decoded.len < dest.len) {
-                dest = try allocator.realloc(dest, decoded.len);
+                const resized = allocator.realloc(dest, decoded.len) catch |err| {
+                    allocator.free(dest);
+                    return err;
+                };
+                dest = resized;
             }
             return DecodeResult{
                 .base = codec,
@@ -44,7 +48,11 @@ pub fn encode(allocator: std.mem.Allocator, base: MultiBaseCodec, input: []const
 
     const encoded = base.encode(dest, input);
     if (encoded.len < dest.len) {
-        dest = try allocator.realloc(dest, encoded.len);
+        const resized = allocator.realloc(dest, encoded.len) catch |err| {
+            allocator.free(dest);
+            return err;
+        };
+        dest = resized;
     }
     return dest[0..encoded.len];
 }

@@ -8,6 +8,13 @@ const multibase = @import("multibase.zig");
 const MultiBaseCodec = multibase.MultiBaseCodec;
 
 const IPFS_DELIMITER = "/ipfs/";
+
+/// Constants for CID implementation
+const MULTIHASH_VERSION = 0x12;
+const MULTIHASH_CODEC = 0x20;
+const DIGEST_SIZE = 32;
+const MIN_CID_LENGTH = 2;
+
 /// CidError represents an error that occurred during CID parsing.
 pub const CidError = error{
     UnknownCodec,
@@ -21,19 +28,32 @@ pub const CidError = error{
     InvalidExplicitCidV0,
 };
 
-/// CidVersion represents the version of the CID.
+/// CID version enum representing different versions of Content Identifiers
 pub const CidVersion = enum(u64) {
+    /// Version 0 CID format
     V0 = 0,
+    /// Version 1 CID format
     V1 = 1,
 
+    /// Length of a V0 CID string representation
+    const V0_STRING_LENGTH = 46;
+    /// Length of a V0 CID binary representation
+    const V0_BINARY_LENGTH = 34;
+    /// Expected prefix for V0 CID strings
+    const V0_STRING_PREFIX = "Qm";
+    /// Expected prefix bytes for V0 binary format
+    const V0_BINARY_PREFIX = [_]u8{ 0x12, 0x20 };
+
     /// Checks if the given data is a valid V0 CID string.
+    /// The string must be exactly 46 characters long and start with "Qm".
     pub fn isV0Str(data: []const u8) bool {
-        return data.len == 46 and std.mem.startsWith(u8, data, "Qm");
+        return data.len == V0_STRING_LENGTH and std.mem.startsWith(u8, data, V0_STRING_PREFIX);
     }
 
     /// Checks if the given data is a valid V0 CID binary.
+    /// The binary must be exactly 34 bytes long and start with [0x12, 0x20].
     pub fn isV0Binary(data: []const u8) bool {
-        return data.len == 34 and std.mem.startsWith(u8, data, &[_]u8{ 0x12, 0x20 });
+        return data.len == V0_BINARY_LENGTH and std.mem.startsWith(u8, data, &V0_BINARY_PREFIX);
     }
 
     /// Converts a u64 to a CidVersion.
@@ -210,8 +230,10 @@ pub fn Cid(comptime S: usize) type {
 
             const needed_size = MultiBaseCodec.Base58Btc.calcSize(bytes) - 1; // -1 for remove the multibase prefix 'z'
             const dest = try self.allocator.alloc(u8, needed_size);
+            errdefer self.allocator.free(dest);
+            
             const encoded = MultiBaseCodec.base58.encodeBtc(dest, bytes);
-
+            
             if (encoded.len < dest.len) {
                 // Shrink allocation to exact size if needed
                 return self.allocator.realloc(dest, encoded.len);
@@ -225,6 +247,8 @@ pub fn Cid(comptime S: usize) type {
 
             const needed_size = MultiBaseCodec.Base32Lower.calcSize(bytes);
             const dest = try self.allocator.alloc(u8, needed_size);
+            errdefer self.allocator.free(dest);
+            
             const encoded = MultiBaseCodec.Base32Lower.encode(dest, bytes);
             if (encoded.len < dest.len) {
                 // Shrink allocation to exact size if needed
@@ -235,16 +259,10 @@ pub fn Cid(comptime S: usize) type {
 
         /// Returns the CID as a string.
         pub fn toString(self: *const Self) ![]const u8 {
-            switch (self.version) {
-                .V0 => {
-                    // For V0, always use Base58BTC
-                    return try self.toStringV0();
-                },
-                .V1 => {
-                    // For V1, use Base32Lower
-                    return try self.toStringV1();
-                },
-            }
+            return switch (self.version) {
+                .V0 => try self.toStringV0(),
+                .V1 => try self.toStringV1(),
+            };
         }
 
         /// Returns the CID as a string with the given base.
@@ -262,6 +280,8 @@ pub fn Cid(comptime S: usize) type {
 
                     const needed_size = base.calcSize(bytes);
                     const dest = try self.allocator.alloc(u8, needed_size);
+                    errdefer self.allocator.free(dest);
+                    
                     const encoded = base.encode(dest, bytes);
                     if (encoded.len < dest.len) {
                         // Shrink allocation to exact size if needed
@@ -290,6 +310,8 @@ pub fn Cid(comptime S: usize) type {
             const decoded = if (CidVersion.isV0Str(hash)) blk: {
                 const needed_size = MultiBaseCodec.Base58Btc.calcSizeForDecode(hash);
                 var dest = try allocator.alloc(u8, needed_size);
+                errdefer allocator.free(dest);
+                
                 const result = try MultiBaseCodec.Base58Btc.decode(dest, hash);
                 if (result.len < dest.len) {
                     dest = try allocator.realloc(dest, result.len);
@@ -297,7 +319,6 @@ pub fn Cid(comptime S: usize) type {
                 break :blk dest[0..result.len];
             } else blk: {
                 const decoded_result = try multibase.decode(allocator, hash);
-                errdefer allocator.free(decoded_result.data);
                 break :blk decoded_result.data;
             };
 

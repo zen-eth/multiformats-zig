@@ -121,6 +121,8 @@ pub fn Multihash(comptime S: usize) type {
         /// toBytes converts the Multihash to a byte slice.
         pub fn toBytes(self: *const Self, allocator: std.mem.Allocator) ![]const u8 {
             const bytes = try allocator.alloc(u8, self.encodedLen());
+            errdefer allocator.free(bytes);
+            
             var stream = std.io.fixedBufferStream(bytes);
             const written = try self.write(stream.writer());
             std.debug.assert(written == bytes.len);
