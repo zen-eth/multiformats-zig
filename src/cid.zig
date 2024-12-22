@@ -215,12 +215,12 @@ pub fn Cid(comptime S: usize) type {
         }
 
         /// Returns the codec of the CID.
-        pub fn getCodec(self: *const Self) u64 {
+        pub fn getCodec(self: Self) u64 {
             return self.codec;
         }
 
         /// Returns the version of the CID.
-        pub fn getVersion(self: *const Self) CidVersion {
+        pub fn getVersion(self: Self) CidVersion {
             return self.version;
         }
 
@@ -296,6 +296,36 @@ pub fn Cid(comptime S: usize) type {
             var fbs = std.io.fixedBufferStream(bytes);
             return try Self.readBytes(allocator, fbs.reader());
         }
+
+        // pub fn calcDecodedSize(cid_str: []const u8) !usize {
+        //     const hash = if (std.mem.indexOf(u8, cid_str, IPFS_DELIMITER)) |index|
+        //         cid_str[index + IPFS_DELIMITER.len ..]
+        //     else
+        //         cid_str;
+        //
+        //     return if (CidVersion.isV0Str(hash))
+        //         MultiBaseCodec.Base58Btc.calcSizeForDecode(hash)
+        //     else
+        //        multibase.MultiBaseCodec.calcDecodedSize(hash);
+        // }
+        //
+        // pub fn fromString(allocator: Allocator, cid_str: []const u8, buffer: []u8) !Self {
+        //     // Find IPFS delimiter if present
+        //     const hash = if (std.mem.indexOf(u8, cid_str, IPFS_DELIMITER)) |index|
+        //         cid_str[index + IPFS_DELIMITER.len ..]
+        //     else
+        //         cid_str;
+        //
+        //     if (hash.len < 2) return CidError.InputTooShort;
+        //
+        //     // Handle CIDv0 vs CIDv1
+        //     const decoded = if (CidVersion.isV0Str(hash))
+        //         try MultiBaseCodec.Base58Btc.decode(buffer, hash)
+        //     else
+        //         try multibase
+        //
+        //     return try Self.fromBytes(allocator, decoded);
+        // }
 
         pub fn fromString(allocator: Allocator, cid_str: []const u8) !Self {
             // Find IPFS delimiter if present

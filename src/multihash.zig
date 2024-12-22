@@ -29,12 +29,12 @@ pub fn Multihash(comptime S: usize) type {
         }
 
         /// getCode returns the code of the Multihash.
-        pub fn getCode(self: *const Self) Multicodec {
+        pub fn getCode(self: Self) Multicodec {
             return self.code;
         }
 
         /// getSize returns the size of the Multihash.
-        pub fn getSize(self: *const Self) u8 {
+        pub fn getSize(self: Self) u8 {
             return self.size;
         }
 
@@ -119,14 +119,10 @@ pub fn Multihash(comptime S: usize) type {
         }
 
         /// toBytes converts the Multihash to a byte slice.
-        pub fn toBytes(self: *const Self, allocator: std.mem.Allocator) ![]const u8 {
-            const bytes = try allocator.alloc(u8, self.encodedLen());
-            errdefer allocator.free(bytes);
-
-            var stream = std.io.fixedBufferStream(bytes);
+        pub fn toBytes(self: *const Self, dest: []u8) ![]const u8 {
+            var stream = std.io.fixedBufferStream(dest);
             const written = try self.write(stream.writer());
-            std.debug.assert(written == bytes.len);
-            return bytes;
+            return dest[0..written];
         }
     };
 }
@@ -832,4 +828,13 @@ test "multihash readBytes" {
     try testing.expectEqual(mh.getCode().getCode(), 0x12);
     try testing.expectEqual(mh.getSize(), 10);
     try testing.expectEqualSlices(u8, mh.getDigest(), input[2..]);
+}
+
+test "multihash toBytes" {
+    const expected_bytes = [_]u8{ 0x12, 0x0a, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
+    var mh = try Multihash(32).wrap(Multicodec.SHA2_256, &[_]u8{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 });
+
+    var buf: [100]u8 = undefined;
+    const bytes = try mh.toBytes(buf[0..]);
+    try testing.expectEqualSlices(u8, bytes, &expected_bytes);
 }

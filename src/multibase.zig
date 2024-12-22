@@ -118,6 +118,56 @@ pub const MultiBaseCodec = enum {
         };
     }
 
+    pub fn fromCode(prefix: []const u8) !MultiBaseCodec {
+        if (prefix.len == 0) return error.InvalidPrefix;
+
+        // First handle single byte prefixes
+        if (prefix.len == 1) {
+            return switch (prefix[0]) {
+                0 => .Identity,
+                '0' => .Base2,
+                '7' => .Base8,
+                '9' => .Base10,
+                'f' => .Base16Lower,
+                'F' => .Base16Upper,
+                'b' => .Base32Lower,
+                'B' => .Base32Upper,
+                'c' => .Base32PadLower,
+                'C' => .Base32PadUpper,
+                'v' => .Base32HexLower,
+                'V' => .Base32HexUpper,
+                't' => .Base32HexPadLower,
+                'T' => .Base32HexPadUpper,
+                'h' => .Base32Z,
+                'k' => .Base36Lower,
+                'K' => .Base36Upper,
+                'z' => .Base58Btc,
+                'Z' => .Base58Flickr,
+                'm' => .Base64,
+                'M' => .Base64Pad,
+                'u' => .Base64Url,
+                'U' => .Base64UrlPad,
+                else => error.InvalidPrefix,
+            };
+        }
+
+        // Handle multi-byte UTF-8 prefixes
+        if (std.mem.eql(u8, prefix, "🚀")) return .Base256Emoji;
+
+        return error.InvalidPrefix;
+    }
+
+    pub fn calcDecodedSize(encoded: []const u8) !usize {
+        if (encoded.len < 1) return error.InvalidLength;
+
+        const prefix_len = std.unicode.utf8ByteSequenceLength(encoded[0]) catch return error.InvalidLength;
+        if (prefix_len > encoded.len) return error.InvalidLength;
+
+        const base = try MultiBaseCodec.fromCode(encoded[0..prefix_len]);
+        return base.calcSizeForDecode(encoded[prefix_len..]);
+    }
+
+
     /// Encodes a byte slice into a multibase string.
     /// The destination buffer must be large enough to hold the encoded string.
     /// Returns the encoded multibase string.
