@@ -112,7 +112,6 @@ pub const MultiBaseCodec = enum {
     pub fn encode(self: *const MultiBaseCodec, dest: []u8, source: []const u8) []const u8 {
         const code_str = self.code();
         @memcpy(dest[0..code_str.len], code_str);
-
         const encoded = switch (self.*) {
             .Identity => IdentityImpl.encode(dest[code_str.len..], source),
             .Base2 => Base2Impl.encode(dest[code_str.len..], source),
@@ -193,7 +192,7 @@ pub const MultiBaseCodec = enum {
         return code_len + switch (self.*) {
             .Identity => source.len,
             .Base2 => source.len * 8,
-            .Base8 => (source.len * 8 + 2) / 3,
+            .Base8 => @divTrunc((source.len * 8 + 2), 3),
             .Base10 => blk: {
                 if (source.len == 0) break :blk 1;
                 var size: usize = 1;
@@ -207,8 +206,8 @@ pub const MultiBaseCodec = enum {
                 break :blk size;
             },
             .Base16Lower, .Base16Upper => source.len * 2,
-            .Base32Lower, .Base32Upper, .Base32HexLower, .Base32HexUpper, .Base32Z => (source.len * 8 + 4) / 5,
-            .Base32PadLower, .Base32PadUpper, .Base32HexPadLower, .Base32HexPadUpper => ((source.len + 4) / 5) * 8,
+            .Base32Lower, .Base32Upper, .Base32HexLower, .Base32HexUpper, .Base32Z => @divTrunc((source.len * 8 + 4), 5),
+            .Base32PadLower, .Base32PadUpper, .Base32HexPadLower, .Base32HexPadUpper => (@divTrunc((source.len + 4), 5)) * 8,
             .Base36Lower, .Base36Upper => blk: {
                 if (source.len == 0) break :blk 1;
                 var size: usize = 1;
@@ -227,8 +226,8 @@ pub const MultiBaseCodec = enum {
                 const size = @as(usize, @intFromFloat(@ceil(@as(f64, @floatFromInt(source.len)) * 137 / 100)));
                 break :blk size;
             },
-            .Base64, .Base64Url => (source.len + 2) / 3 * 4,
-            .Base64Pad, .Base64UrlPad => ((source.len + 2) / 3) * 4,
+            .Base64, .Base64Url => @divTrunc((source.len + 2), 3) * 4,
+            .Base64Pad, .Base64UrlPad => @divTrunc((source.len + 2), 3) * 4,
             .Base256Emoji => source.len * 4, // Each emoji is up to 4 bytes in UTF-8
         };
     }
@@ -239,7 +238,7 @@ pub const MultiBaseCodec = enum {
         return code_len + switch (self.*) {
             .Identity => source_size,
             .Base2 => source_size * 8,
-            .Base8 => (source_size * 8 + 2) / 3,
+            .Base8 => @divTrunc((source_size * 8 + 2), 3),
             .Base10 => blk: {
                 if (source_size == 0) break :blk 1;
                 var size: usize = 1;
@@ -254,8 +253,8 @@ pub const MultiBaseCodec = enum {
                 break :blk size;
             },
             .Base16Lower, .Base16Upper => source_size * 2,
-            .Base32Lower, .Base32Upper, .Base32HexLower, .Base32HexUpper, .Base32Z => (source_size * 8 + 4) / 5,
-            .Base32PadLower, .Base32PadUpper, .Base32HexPadLower, .Base32HexPadUpper => ((source_size + 4) / 5) * 8,
+            .Base32Lower, .Base32Upper, .Base32HexLower, .Base32HexUpper, .Base32Z => @divTrunc((source_size * 8 + 4), 5),
+            .Base32PadLower, .Base32PadUpper, .Base32HexPadLower, .Base32HexPadUpper => @divTrunc((source_size + 4), 5) * 8,
             .Base36Lower, .Base36Upper => blk: {
                 if (source_size == 0) break :blk 1;
                 var size: usize = 1;
@@ -275,8 +274,8 @@ pub const MultiBaseCodec = enum {
                 const size = @as(usize, @intFromFloat(@ceil(@as(f64, @floatFromInt(source_size)) * 137 / 100)));
                 break :blk size;
             },
-            .Base64, .Base64Url => (source_size + 2) / 3 * 4,
-            .Base64Pad, .Base64UrlPad => ((source_size + 2) / 3) * 4,
+            .Base64, .Base64Url => @divTrunc((source_size + 2), 3) * 4,
+            .Base64Pad, .Base64UrlPad => @divTrunc((source_size + 2), 3) * 4,
             .Base256Emoji => source_size * 4, // Each emoji is up to 4 bytes in UTF-8
         };
     }
@@ -284,15 +283,15 @@ pub const MultiBaseCodec = enum {
     pub fn calcSizeForDecode(self: *const MultiBaseCodec, source: []const u8) usize {
         return switch (self.*) {
             .Identity => source.len,
-            .Base2 => (source.len + 7) / 8,
-            .Base8 => (source.len * 3 + 7) / 8,
+            .Base2 => @divTrunc((source.len + 7), 8),
+            .Base8 => @divTrunc((source.len * 3 + 7), 8),
             .Base10 => source.len,
-            .Base16Lower, .Base16Upper => (source.len + 1) / 2,
-            .Base32Lower, .Base32Upper, .Base32HexLower, .Base32HexUpper, .Base32PadLower, .Base32PadUpper, .Base32HexPadLower, .Base32HexPadUpper, .Base32Z => (source.len * 5 + 7) / 8,
+            .Base16Lower, .Base16Upper => @divTrunc((source.len + 1), 2),
+            .Base32Lower, .Base32Upper, .Base32HexLower, .Base32HexUpper, .Base32PadLower, .Base32PadUpper, .Base32HexPadLower, .Base32HexPadUpper, .Base32Z => @divTrunc((source.len * 5 + 7), 8),
             .Base36Lower, .Base36Upper => source.len,
             .Base58Flickr, .Base58Btc => source.len,
-            .Base64, .Base64Url, .Base64Pad, .Base64UrlPad => (source.len * 3 + 3) / 4,
-            .Base256Emoji => (source.len + 3) / 4,
+            .Base64, .Base64Url, .Base64Pad, .Base64UrlPad => @divTrunc((source.len * 3 + 3), 4),
+            .Base256Emoji => @divTrunc((source.len + 3), 4),
         };
     }
 
@@ -300,15 +299,15 @@ pub const MultiBaseCodec = enum {
     pub fn calcSizeForDecodeBySize(self: *const MultiBaseCodec, source_size: usize) usize {
         return switch (self.*) {
             .Identity => source_size,
-            .Base2 => (source_size + 7) / 8,
-            .Base8 => (source_size * 3 + 7) / 8,
+            .Base2 => @divTrunc((source_size + 7), 8),
+            .Base8 => @divTrunc((source_size * 3 + 7), 8),
             .Base10 => source_size,
-            .Base16Lower, .Base16Upper => (source_size + 1) / 2,
-            .Base32Lower, .Base32Upper, .Base32HexLower, .Base32HexUpper, .Base32PadLower, .Base32PadUpper, .Base32HexPadLower, .Base32HexPadUpper, .Base32Z => (source_size * 5 + 7) / 8,
+            .Base16Lower, .Base16Upper => @divTrunc((source_size + 1), 2),
+            .Base32Lower, .Base32Upper, .Base32HexLower, .Base32HexUpper, .Base32PadLower, .Base32PadUpper, .Base32HexPadLower, .Base32HexPadUpper, .Base32Z => @divTrunc((source_size * 5 + 7), 8),
             .Base36Lower, .Base36Upper => source_size,
             .Base58Flickr, .Base58Btc => source_size,
-            .Base64, .Base64Url, .Base64Pad, .Base64UrlPad => (source_size * 3 + 3) / 4,
-            .Base256Emoji => (source_size + 3) / 4,
+            .Base64, .Base64Url, .Base64Pad, .Base64UrlPad => @divTrunc((source_size * 3 + 3), 4),
+            .Base256Emoji => @divTrunc((source_size + 3), 4),
         };
     }
 

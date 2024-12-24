@@ -196,20 +196,7 @@ pub fn Cid(comptime S: usize) type {
         }
 
         pub fn encodedStringLen(self: *const Self) usize {
-            return switch (self.version) {
-                .V0 => CidVersion.V0_STRING_LENGTH,
-                .V1 => {
-                    var version_buf: [varint.bufferSize(u64)]u8 = undefined;
-                    const version = varint.encode(u64, self.version.toInt(), &version_buf);
-
-                    var codec_buf: [varint.bufferSize(u64)]u8 = undefined;
-                    const codec = varint.encode(u64, self.codec.getCode(), &codec_buf);
-
-                    const byte_len = version.len + codec.len + self.hash.encodedLen();
-                    // Base32Lower encoding uses 5 bits per byte, so we need to add 4 bits to the end to round up to the next multiple of 5.
-                    return (byte_len * 8 + 4) / 5;
-                },
-            };
+            return self.encodedBaseStringLen(.Base32Lower);
         }
 
         pub fn encodedBaseStringLen(self: *const Self, base: MultiBaseCodec) usize {
@@ -251,23 +238,11 @@ pub fn Cid(comptime S: usize) type {
             return self.version;
         }
 
-        fn toStringV0(dest: []u8, source: []const u8) ![]const u8 {
-            const encoded = MultiBaseCodec.Base58Impl.encodeBtc(dest, source);
-
-            return encoded;
-        }
-
-        fn toStringV1(dest: []u8, source: []const u8) ![]const u8 {
-            const encoded = MultiBaseCodec.Base32Lower.encode(dest, source);
-
-            return encoded;
-        }
-
         /// Returns the CID as a string.
         pub fn toString(self: *const Self, dest: []u8, source: []const u8) ![]const u8 {
             return switch (self.version) {
-                .V0 => try self.toStringV0(dest, source),
-                .V1 => try self.toStringV1(dest, source),
+                .V0 => try toStringV0(dest, source),
+                .V1 => try toStringV1(dest, source),
             };
         }
 
@@ -278,7 +253,7 @@ pub fn Cid(comptime S: usize) type {
                     if (base != .Base58Btc) {
                         return ParseError.InvalidCidV0Base;
                     }
-                    return self.toStringV0(dest, source);
+                    return toStringV0(dest, source);
                 },
                 .V1 => {
                     const encoded = base.encode(dest, source);
@@ -353,6 +328,18 @@ pub fn Cid(comptime S: usize) type {
     };
 }
 
+fn toStringV0(dest: []u8, source: []const u8) ![]const u8 {
+    const encoded = MultiBaseCodec.Base58Impl.encodeBtc(dest, source);
+
+    return encoded;
+}
+
+fn toStringV1(dest: []u8, source: []const u8) ![]const u8 {
+    const encoded = MultiBaseCodec.Base32Lower.encode(dest, source);
+
+    return encoded;
+}
+
 test "Cid" {
     const testing = std.testing;
     const allocator = testing.allocator;
@@ -390,75 +377,99 @@ test "Cid" {
     }
 }
 
-// test "Cid conversion and comparison" {
-//     const testing = std.testing;
-//     const allocator = testing.allocator;
-//
-//     // Test V0 to V1 conversion
-//     {
-//         const hash = try Multihash(32).wrap(Multicodec.SHA2_256, &[_]u8{0} ** 32);
-//         const v0 = try Cid(32).newV0(allocator, hash);
-//         const v1 = try v0.intoV1();
-//
-//         try testing.expectEqual(v1.version, .V1);
-//         try testing.expectEqual(v1.codec, v0.codec);
-//         try testing.expect(std.mem.eql(u8, v1.getHash(), v0.getHash()));
-//     }
-//
-//     // Test encoded length
-//     {
-//         const hash = try Multihash(32).wrap(Multicodec.SHA2_256, &[_]u8{0} ** 32);
-//         const cid = try Cid(32).newV1(allocator, Multicodec.RAW.getCode(), hash);
-//         const bytes = try cid.toBytes();
-//         defer allocator.free(bytes);
-//
-//         try testing.expectEqual(cid.encodedLen(), bytes.len);
-//     }
-// }
-//
-// test "to_string_of_base32" {
-//     const testing = std.testing;
-//     const allocator = testing.allocator;
-//
-//     const expected_cid = "bafkreibme22gw2h7y2h7tg2fhqotaqjucnbc24deqo72b6mkl2egezxhvy";
-//     const hash = try multihash.MultihashCodecs.SHA2_256.digest("foo");
-//     const cid = try Cid(32).newV1(allocator, Multicodec.RAW.getCode(), hash);
-//
-//     const result = try cid.toStringOfBase(.Base32Lower);
-//     defer allocator.free(result);
-//
-//     try testing.expectEqualStrings(expected_cid, result);
-// }
-//
-// test "Cid string representations" {
-//     const testing = std.testing;
-//     const allocator = testing.allocator;
-//
-//     // Test V0 string representation with Base58BTC
-//     {
-//         const hash = try Multihash(32).wrap(Multicodec.SHA2_256, &[_]u8{1} ** 32);
-//         const cid = try Cid(32).newV0(allocator, hash);
-//         const str = try cid.toString();
-//         defer allocator.free(str);
-//         std.debug.print("V0 string: {s}\n", .{str});
-//         try testing.expect(CidVersion.isV0Str(str));
-//     }
-//
-//     // Test V1 string representation with different bases
-//     {
-//         const hash = try Multihash(32).wrap(Multicodec.SHA2_256, &[_]u8{1} ** 32);
-//         const cid = try Cid(32).newV1(allocator, Multicodec.RAW.getCode(), hash);
-//
-//         const str_default = try cid.toString();
-//         defer allocator.free(str_default);
-//
-//         const str_base58 = try cid.toStringOfBase(.Base58Btc);
-//         defer allocator.free(str_base58);
-//
-//         try testing.expect(!std.mem.eql(u8, str_default, str_base58));
-//     }
-// }
-//
+test "Cid conversion and comparison" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // Test V0 to V1 conversion
+    {
+        const hash = try Multihash(32).wrap(Multicodec.SHA2_256, &[_]u8{0} ** 32);
+        const v0 = try Cid(32).newV0(hash);
+        const v1 = try v0.intoV1();
+
+        try testing.expectEqual(v1.version, .V1);
+        try testing.expectEqual(v1.codec, v0.codec);
+        try testing.expect(std.mem.eql(u8, v1.getHash(), v0.getHash()));
+    }
+
+    // Test encoded length
+    {
+        const hash = try Multihash(32).wrap(Multicodec.SHA2_256, &[_]u8{0} ** 32);
+        const cid = try Cid(32).newV1(Multicodec.RAW, hash);
+        const needed_size = cid.encodedLen();
+        const buffer = try allocator.alloc(u8, needed_size);
+        defer allocator.free(buffer);
+        const bytes = try cid.toBytes(buffer);
+
+        try testing.expectEqual(cid.encodedLen(), bytes.len);
+    }
+}
+
+test "to_string_of_base32" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    const expected_cid = "bafkreibme22gw2h7y2h7tg2fhqotaqjucnbc24deqo72b6mkl2egezxhvy";
+    const hash = try multihash.MultihashCodecs.SHA2_256.digest("foo");
+    const cid = try Cid(32).newV1(Multicodec.RAW, hash);
+    const needed_size = cid.encodedLen();
+    const buffer = try allocator.alloc(u8, needed_size);
+    defer allocator.free(buffer);
+    const source = try cid.toBytes(buffer);
+
+    const needed_size_str = cid.encodedBaseStringLen(.Base32Lower);
+    const buffer_str = try allocator.alloc(u8, needed_size_str);
+    defer allocator.free(buffer_str);
+    const result_str = try cid.toStringOfBase(.Base32Lower, buffer_str, source);
+
+    try testing.expectEqualStrings(expected_cid, result_str);
+}
+
+test "Cid string representations" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // Test V0 string representation with Base58BTC
+    {
+        const hash = try Multihash(32).wrap(Multicodec.SHA2_256, &[_]u8{1} ** 32);
+        const cid = try Cid(32).newV0(hash);
+        const needed_size = cid.encodedLen();
+        const buffer = try allocator.alloc(u8, needed_size);
+        defer allocator.free(buffer);
+        const source = try cid.toBytes(buffer);
+
+        const needed_size_str = cid.encodedStringLen();
+        const buffer_str = try allocator.alloc(u8, needed_size_str);
+        defer allocator.free(buffer_str);
+
+        const str = try cid.toString(buffer_str, source);
+
+        try testing.expect(CidVersion.isV0Str(str));
+    }
+
+    // Test V1 string representation with different bases
+    {
+        const hash = try Multihash(32).wrap(Multicodec.SHA2_256, &[_]u8{1} ** 32);
+        const cid = try Cid(32).newV1(Multicodec.RAW, hash);
+        const needed_size = cid.encodedLen();
+        const buffer = try allocator.alloc(u8, needed_size);
+        defer allocator.free(buffer);
+        const source = try cid.toBytes(buffer);
+
+        const needed_size_str = cid.encodedStringLen();
+        const buffer_str = try allocator.alloc(u8, needed_size_str);
+        defer allocator.free(buffer_str);
+        const str_default = try cid.toString(buffer_str, source);
+
+        const needed_size_str_base58 = cid.encodedBaseStringLen(.Base58Btc);
+        const buffer_str_base58 = try allocator.alloc(u8, needed_size_str_base58);
+        defer allocator.free(buffer_str_base58);
+        const str_base58 = try cid.toStringOfBase(.Base58Btc, buffer_str_base58, source);
+
+        try testing.expect(!std.mem.eql(u8, str_default, str_base58));
+    }
+}
+
 // test "Cid error cases" {
 //     const testing = std.testing;
 //     const allocator = testing.allocator;
