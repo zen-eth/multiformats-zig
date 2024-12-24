@@ -470,31 +470,35 @@ test "Cid string representations" {
     }
 }
 
-// test "Cid error cases" {
-//     const testing = std.testing;
-//     const allocator = testing.allocator;
-//
-//     {
-//         const hash = try Multihash(32).wrap(Multicodec.SHA2_256, &[_]u8{0} ** 32);
-//         try testing.expectError(ParseError.InvalidCidV0Codec, Cid(32).init(allocator, .V0, Multicodec.RAW.getCode(), hash));
-//     }
-//
-//     {
-//         const hash = try Multihash(32).wrap(Multicodec.SHA2_512, &[_]u8{0} ** 32);
-//         try testing.expectError(ParseError.InvalidCidV0Multihash, Cid(32).newV0(allocator, hash));
-//     }
-//
-//     {
-//         const hash = try Multihash(32).wrap(Multicodec.SHA2_256, &[_]u8{0} ** 32);
-//         var cid = try Cid(32).newV0(allocator, hash);
-//         defer {
-//             if (cid.toStringOfBase(.Base32Lower)) |str| {
-//                 allocator.free(str);
-//             } else |_| {}
-//         }
-//         try testing.expectError(ParseError.InvalidCidV0Base, cid.toStringOfBase(.Base32Lower));
-//     }
-// }
+test "Cid error cases" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    {
+        const hash = try Multihash(32).wrap(Multicodec.SHA2_256, &[_]u8{0} ** 32);
+        try testing.expectError(ParseError.InvalidCidV0Codec, Cid(32).init(.V0, Multicodec.RAW, hash));
+    }
+
+    {
+        const hash = try Multihash(32).wrap(Multicodec.SHA2_512, &[_]u8{0} ** 32);
+        try testing.expectError(ParseError.InvalidCidV0Multihash, Cid(32).newV0(hash));
+    }
+
+    {
+        const hash = try Multihash(32).wrap(Multicodec.SHA2_256, &[_]u8{0} ** 32);
+        var cid = try Cid(32).newV0(hash);
+
+        const needed_size = cid.encodedLen();
+        const buffer = try allocator.alloc(u8, needed_size);
+        defer allocator.free(buffer);
+        const source = try cid.toBytes(buffer);
+
+        const needed_size_str = cid.encodedBaseStringLen(.Base32Lower);
+        const buffer_str = try allocator.alloc(u8, needed_size_str);
+        defer allocator.free(buffer_str);
+        try testing.expectError(ParseError.InvalidCidV0Base, cid.toStringOfBase(.Base32Lower, buffer_str, source));
+    }
+}
 
 // test "Cid fromString1" {
 //     const testing = std.testing;
