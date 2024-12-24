@@ -120,24 +120,24 @@ pub const MultiBaseCodec = enum {
             .Base10 => Base10Impl.encode(dest[code_str.len..], source),
             .Base16Lower => Base16Impl.encodeLower(dest[code_str.len..], source),
             .Base16Upper => Base16Impl.encodeUpper(dest[code_str.len..], source),
-            .Base32Lower => base32.encode(dest[code_str.len..], source, base32.ALPHABET_LOWER, false),
-            .Base32Upper => base32.encode(dest[code_str.len..], source, base32.ALPHABET_UPPER, false),
-            .Base32HexLower => base32.encode(dest[code_str.len..], source, base32.ALPHABET_HEX_LOWER, false),
-            .Base32HexUpper => base32.encode(dest[code_str.len..], source, base32.ALPHABET_HEX_UPPER, false),
-            .Base32PadLower => base32.encode(dest[code_str.len..], source, base32.ALPHABET_LOWER, true),
-            .Base32PadUpper => base32.encode(dest[code_str.len..], source, base32.ALPHABET_UPPER, true),
-            .Base32HexPadLower => base32.encode(dest[code_str.len..], source, base32.ALPHABET_HEX_LOWER, true),
-            .Base32HexPadUpper => base32.encode(dest[code_str.len..], source, base32.ALPHABET_HEX_UPPER, true),
-            .Base32Z => base32.encode(dest[code_str.len..], source, base32.ALPHABET_Z, false),
-            .Base36Lower => base36.encodeLower(dest[code_str.len..], source),
-            .Base36Upper => base36.encodeUpper(dest[code_str.len..], source),
-            .Base58Flickr => base58.encodeFlickr(dest[code_str.len..], source),
-            .Base58Btc => base58.encodeBtc(dest[code_str.len..], source),
+            .Base32Lower => Base32Impl.encode(dest[code_str.len..], source, Base32Impl.ALPHABET_LOWER, false),
+            .Base32Upper => Base32Impl.encode(dest[code_str.len..], source, Base32Impl.ALPHABET_UPPER, false),
+            .Base32HexLower => Base32Impl.encode(dest[code_str.len..], source, Base32Impl.ALPHABET_HEX_LOWER, false),
+            .Base32HexUpper => Base32Impl.encode(dest[code_str.len..], source, Base32Impl.ALPHABET_HEX_UPPER, false),
+            .Base32PadLower => Base32Impl.encode(dest[code_str.len..], source, Base32Impl.ALPHABET_LOWER, true),
+            .Base32PadUpper => Base32Impl.encode(dest[code_str.len..], source, Base32Impl.ALPHABET_UPPER, true),
+            .Base32HexPadLower => Base32Impl.encode(dest[code_str.len..], source, Base32Impl.ALPHABET_HEX_LOWER, true),
+            .Base32HexPadUpper => Base32Impl.encode(dest[code_str.len..], source, Base32Impl.ALPHABET_HEX_UPPER, true),
+            .Base32Z => Base32Impl.encode(dest[code_str.len..], source, Base32Impl.ALPHABET_Z, false),
+            .Base36Lower => Base36Impl.encodeLower(dest[code_str.len..], source),
+            .Base36Upper => Base36Impl.encodeUpper(dest[code_str.len..], source),
+            .Base58Flickr => Base58Impl.encodeFlickr(dest[code_str.len..], source),
+            .Base58Btc => Base58Impl.encodeBtc(dest[code_str.len..], source),
             .Base64 => std.base64.standard_no_pad.Encoder.encode(dest[code_str.len..], source),
             .Base64Pad => std.base64.standard.Encoder.encode(dest[code_str.len..], source),
             .Base64Url => std.base64.url_safe_no_pad.Encoder.encode(dest[code_str.len..], source),
             .Base64UrlPad => std.base64.url_safe.Encoder.encode(dest[code_str.len..], source),
-            .Base256Emoji => base256emoji.encode(dest[code_str.len..], source),
+            .Base256Emoji => Base256emojiImpl.encode(dest[code_str.len..], source),
         };
 
         return dest[0 .. code_str.len + encoded.len];
@@ -154,19 +154,19 @@ pub const MultiBaseCodec = enum {
             .Base10 => Base10Impl.decode(dest, source),
             .Base16Lower => Base16Impl.decode(dest, source),
             .Base16Upper => Base16Impl.decode(dest, source),
-            .Base32Lower => base32.decode(dest, source, &base32.DECODE_TABLE_LOWER),
-            .Base32Upper => base32.decode(dest, source, &base32.DECODE_TABLE_UPPER),
-            .Base32HexLower => base32.decode(dest, source, &base32.DECODE_TABLE_HEX_LOWER),
-            .Base32HexUpper => base32.decode(dest, source, &base32.DECODE_TABLE_HEX_UPPER),
-            .Base32PadLower => base32.decode(dest, source, &base32.DECODE_TABLE_LOWER),
-            .Base32PadUpper => base32.decode(dest, source, &base32.DECODE_TABLE_UPPER),
-            .Base32HexPadLower => base32.decode(dest, source, &base32.DECODE_TABLE_HEX_LOWER),
-            .Base32HexPadUpper => base32.decode(dest, source, &base32.DECODE_TABLE_HEX_UPPER),
-            .Base32Z => base32.decode(dest, source, &base32.DECODE_TABLE_Z),
-            .Base36Lower => base36.decode(dest, source, base36.ALPHABET_LOWER),
-            .Base36Upper => base36.decode(dest, source, base36.ALPHABET_UPPER),
-            .Base58Flickr => base58.decodeFlickr(dest, source),
-            .Base58Btc => base58.decodeBtc(dest, source),
+            .Base32Lower => Base32Impl.decode(dest, source, &Base32Impl.DECODE_TABLE_LOWER),
+            .Base32Upper => Base32Impl.decode(dest, source, &Base32Impl.DECODE_TABLE_UPPER),
+            .Base32HexLower => Base32Impl.decode(dest, source, &Base32Impl.DECODE_TABLE_HEX_LOWER),
+            .Base32HexUpper => Base32Impl.decode(dest, source, &Base32Impl.DECODE_TABLE_HEX_UPPER),
+            .Base32PadLower => Base32Impl.decode(dest, source, &Base32Impl.DECODE_TABLE_LOWER),
+            .Base32PadUpper => Base32Impl.decode(dest, source, &Base32Impl.DECODE_TABLE_UPPER),
+            .Base32HexPadLower => Base32Impl.decode(dest, source, &Base32Impl.DECODE_TABLE_HEX_LOWER),
+            .Base32HexPadUpper => Base32Impl.decode(dest, source, &Base32Impl.DECODE_TABLE_HEX_UPPER),
+            .Base32Z => Base32Impl.decode(dest, source, &Base32Impl.DECODE_TABLE_Z),
+            .Base36Lower => Base36Impl.decode(dest, source, Base36Impl.ALPHABET_LOWER),
+            .Base36Upper => Base36Impl.decode(dest, source, Base36Impl.ALPHABET_UPPER),
+            .Base58Flickr => Base58Impl.decodeFlickr(dest, source),
+            .Base58Btc => Base58Impl.decodeBtc(dest, source),
             .Base64 => blk: {
                 try std.base64.standard_no_pad.Decoder.decode(dest, source);
                 break :blk dest[0..try std.base64.standard_no_pad.Decoder.calcSizeForSlice(source)];
@@ -183,7 +183,7 @@ pub const MultiBaseCodec = enum {
                 try std.base64.url_safe.Decoder.decode(dest, source);
                 break :blk dest[0..try std.base64.url_safe.Decoder.calcSizeForSlice(source)];
             },
-            .Base256Emoji => base256emoji.decode(dest, source),
+            .Base256Emoji => Base256emojiImpl.decode(dest, source),
         };
     }
 
@@ -233,6 +233,53 @@ pub const MultiBaseCodec = enum {
         };
     }
 
+    /// Calculates the maximum size needed for source_size bytes when encoding
+    pub fn calcSizeBySize(self: *const MultiBaseCodec, source_size: usize) usize {
+        const code_len = self.code().len;
+        return code_len + switch (self.*) {
+            .Identity => source_size,
+            .Base2 => source_size * 8,
+            .Base8 => (source_size * 8 + 2) / 3,
+            .Base10 => blk: {
+                if (source_size == 0) break :blk 1;
+                var size: usize = 1;
+                for (0..source_size) |i| {
+                    const byte: u8 = @as(u8, 1) << @as(u3, @intCast(i % 8));
+                    if (byte == 0) {
+                        size += 1;
+                        continue;
+                    }
+                    size += @as(usize, @intFromFloat(@ceil(@log10(@as(f64, @floatFromInt(byte))))));
+                }
+                break :blk size;
+            },
+            .Base16Lower, .Base16Upper => source_size * 2,
+            .Base32Lower, .Base32Upper, .Base32HexLower, .Base32HexUpper, .Base32Z => (source_size * 8 + 4) / 5,
+            .Base32PadLower, .Base32PadUpper, .Base32HexPadLower, .Base32HexPadUpper => ((source_size + 4) / 5) * 8,
+            .Base36Lower, .Base36Upper => blk: {
+                if (source_size == 0) break :blk 1;
+                var size: usize = 1;
+                for (0..source_size) |i| {
+                    const byte: u8 = @as(u8, 1) << @as(u3, @intCast(i % 8));
+                    if (byte == 0) {
+                        size += 1;
+                        continue;
+                    }
+                    size += @as(usize, @intFromFloat(@ceil(@log(36.0) / @log(2.0) * 8.0)));
+                }
+                break :blk size;
+            },
+            .Base58Flickr, .Base58Btc => blk: {
+                if (source_size == 0) break :blk 1;
+                // Base58 expands at worst case by log(256)/log(58) ≈ 1.37 times
+                const size = @as(usize, @intFromFloat(@ceil(@as(f64, @floatFromInt(source_size)) * 137 / 100)));
+                break :blk size;
+            },
+            .Base64, .Base64Url => (source_size + 2) / 3 * 4,
+            .Base64Pad, .Base64UrlPad => ((source_size + 2) / 3) * 4,
+            .Base256Emoji => source_size * 4, // Each emoji is up to 4 bytes in UTF-8
+        };
+    }
     /// Calculates the maximum size needed for decoding the given encoded string
     pub fn calcSizeForDecode(self: *const MultiBaseCodec, source: []const u8) usize {
         return switch (self.*) {
@@ -246,6 +293,22 @@ pub const MultiBaseCodec = enum {
             .Base58Flickr, .Base58Btc => source.len,
             .Base64, .Base64Url, .Base64Pad, .Base64UrlPad => (source.len * 3 + 3) / 4,
             .Base256Emoji => (source.len + 3) / 4,
+        };
+    }
+
+    /// Calculates the maximum size needed for decoding the given encoded string
+    pub fn calcSizeForDecodeBySize(self: *const MultiBaseCodec, source_size: usize) usize {
+        return switch (self.*) {
+            .Identity => source_size,
+            .Base2 => (source_size + 7) / 8,
+            .Base8 => (source_size * 3 + 7) / 8,
+            .Base10 => source_size,
+            .Base16Lower, .Base16Upper => (source_size + 1) / 2,
+            .Base32Lower, .Base32Upper, .Base32HexLower, .Base32HexUpper, .Base32PadLower, .Base32PadUpper, .Base32HexPadLower, .Base32HexPadUpper, .Base32Z => (source_size * 5 + 7) / 8,
+            .Base36Lower, .Base36Upper => source_size,
+            .Base58Flickr, .Base58Btc => source_size,
+            .Base64, .Base64Url, .Base64Pad, .Base64UrlPad => (source_size * 3 + 3) / 4,
+            .Base256Emoji => (source_size + 3) / 4,
         };
     }
 
@@ -651,7 +714,7 @@ pub const MultiBaseCodec = enum {
         }
     };
 
-    pub const base32 = struct {
+    pub const Base32Impl = struct {
         const ALPHABET_LOWER = "abcdefghijklmnopqrstuvwxyz234567";
         const ALPHABET_UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
         const ALPHABET_HEX_LOWER = "0123456789abcdefghijklmnopqrstuv";
@@ -759,7 +822,7 @@ pub const MultiBaseCodec = enum {
         }
     };
 
-    pub const base36 = struct {
+    pub const Base36Impl = struct {
         const ALPHABET_LOWER = "0123456789abcdefghijklmnopqrstuvwxyz";
         const ALPHABET_UPPER = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
         const Vec = @Vector(16, u8);
@@ -935,7 +998,7 @@ pub const MultiBaseCodec = enum {
         }
     };
 
-    pub const base58 = struct {
+    pub const Base58Impl = struct {
         const ALPHABET_FLICKR = "123456789abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ";
         const ALPHABET_BTC = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
         const Vec = @Vector(16, u8);
@@ -1148,7 +1211,7 @@ pub const MultiBaseCodec = enum {
         }
     };
 
-    pub const base256emoji = struct {
+    pub const Base256emojiImpl = struct {
         const ALPHABET = "🚀🪐☄🛰🌌🌑🌒🌓🌔🌕🌖🌗🌘🌍🌏🌎🐉☀💻🖥💾💿😂❤😍🤣😊🙏💕😭😘👍😅👏😁🔥🥰💔💖💙😢🤔😆🙄💪😉☺👌🤗💜😔😎😇🌹🤦🎉💞✌✨🤷😱😌🌸🙌😋💗💚😏💛🙂💓🤩😄😀🖤😃💯🙈👇🎶😒🤭❣😜💋👀😪😑💥🙋😞😩😡🤪👊🥳😥🤤👉💃😳✋😚😝😴🌟😬🙃🍀🌷😻😓⭐✅🥺🌈😈🤘💦✔😣🏃💐☹🎊💘😠☝😕🌺🎂🌻😐🖕💝🙊😹🗣💫💀👑🎵🤞😛🔴😤🌼😫⚽🤙☕🏆🤫👈😮🙆🍻🍃🐶💁😲🌿🧡🎁⚡🌞🎈❌✊👋😰🤨😶🤝🚶💰🍓💢🤟🙁🚨💨🤬✈🎀🍺🤓😙💟🌱😖👶🥴▶➡❓💎💸⬇😨🌚🦋😷🕺⚠🙅😟😵👎🤲🤠🤧📌🔵💅🧐🐾🍒😗🤑🌊🤯🐷☎💧😯💆👆🎤🙇🍑❄🌴💣🐸💌📍🥀🤢👅💡💩👐📸👻🤐🤮🎼🥵🚩🍎🍊👼💍📣🥂";
         const Vec = @Vector(16, u8);
 
@@ -2390,4 +2453,37 @@ test "multibase encode/decode" {
         const input = "😄✋🍀🍀😓😅😑😓🥺🍀😳👏";
         try testing.expectError(ParseError.InvalidBaseString, MultiBaseCodec.fromCode(input));
     }
+}
+
+test "Base36 and Base58 size calculations" {
+    const testing = std.testing;
+
+    const test_data = "Hello WorldHello World  Hello World";
+
+    // Base36
+    const base36_enc_size = MultiBaseCodec.Base36Upper.calcSize(test_data);
+    const base36_enc_size1 = MultiBaseCodec.Base36Upper.calcSizeBySize(test_data.len);
+    try testing.expectEqual(base36_enc_size, base36_enc_size1);
+
+    // Base58
+    const base58_enc_size = MultiBaseCodec.Base58Btc.calcSize(test_data);
+    const base58_enc_size1 = MultiBaseCodec.Base58Btc.calcSizeBySize(test_data.len);
+    try testing.expectEqual(base58_enc_size, base58_enc_size1);
+
+    // decode size calculation
+    const dest = try testing.allocator.alloc(u8, base36_enc_size);
+    defer testing.allocator.free(dest);
+    const encoded = MultiBaseCodec.Base36Upper.encode(dest, test_data);
+
+    const base36_dec_size2 = MultiBaseCodec.Base36Upper.calcSizeForDecodeBySize(encoded.len);
+    const base36_dec_size = MultiBaseCodec.Base36Upper.calcSizeForDecode(encoded);
+    try testing.expectEqual(base36_dec_size, base36_dec_size2);
+
+    const dest2 = try testing.allocator.alloc(u8, base58_enc_size);
+    defer testing.allocator.free(dest2);
+    const encoded2 = MultiBaseCodec.Base58Btc.encode(dest2, test_data);
+
+    const base58_dec_size2 = MultiBaseCodec.Base58Btc.calcSizeForDecodeBySize(encoded2.len);
+    const base58_dec_size = MultiBaseCodec.Base58Btc.calcSizeForDecode(encoded2);
+    try testing.expectEqual(base58_dec_size, base58_dec_size2);
 }
