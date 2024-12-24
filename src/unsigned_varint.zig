@@ -2,7 +2,7 @@ const std = @import("std");
 const testing = std.testing;
 
 /// VarintError represents an error that occurred during varint encoding or decoding.
-pub const VarintError = error{
+pub const VarintParseError = error{
     Insufficient,
     Overflow,
     NotMinimal,
@@ -38,7 +38,7 @@ pub fn decode(comptime T: type, buffer: []const u8) !struct { value: T, remainin
         if (!isLast(b)) {
             continuation_bytes += 1;
             if (continuation_bytes >= maxBytesForType(T)) {
-                return VarintError.Overflow;
+                return VarintParseError.Overflow;
             }
         }
 
@@ -47,7 +47,7 @@ pub fn decode(comptime T: type, buffer: []const u8) !struct { value: T, remainin
 
         if (isLast(b)) {
             if (b == 0 and i > 0) {
-                return VarintError.NotMinimal;
+                return VarintParseError.NotMinimal;
             }
             return .{
                 .value = value,
@@ -58,7 +58,7 @@ pub fn decode(comptime T: type, buffer: []const u8) !struct { value: T, remainin
         i += 1;
     }
 
-    return VarintError.Insufficient;
+    return VarintParseError.Insufficient;
 }
 
 fn isLast(b: u8) bool {
@@ -106,7 +106,7 @@ pub fn decodeStream(reader: anytype, comptime T: type) !T {
         if (!isLast(byte)) {
             continuation_bytes += 1;
             if (continuation_bytes >= maxBytesForType(T)) {
-                return VarintError.Overflow;
+                return VarintParseError.Overflow;
             }
         }
 
@@ -115,7 +115,7 @@ pub fn decodeStream(reader: anytype, comptime T: type) !T {
 
         if (isLast(byte)) {
             if (byte == 0 and i > 0) {
-                return VarintError.NotMinimal;
+                return VarintParseError.NotMinimal;
             }
             return value;
         }

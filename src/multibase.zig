@@ -1,61 +1,11 @@
 const std = @import("std");
 
 /// DecodeError represents an error that occurred during decoding a multibase string.
-pub const DecodeError = error{
+pub const ParseError = error{
     InvalidChar,
     InvalidBaseString,
+    InvalidPrefix,
 };
-
-pub const DecodeResult = struct {
-    base: MultiBaseCodec,
-    data: []const u8,
-};
-
-pub fn decode(allocator: std.mem.Allocator, input: []const u8) !DecodeResult {
-    if (input.len == 0) return error.InvalidBaseString;
-
-    const code = input[0 .. std.unicode.utf8ByteSequenceLength(input[0]) catch return error.InvalidBaseString];
-    const rest = input[code.len..];
-
-    inline for (@typeInfo(MultiBaseCodec).@"enum".fields) |field| {
-        const codec = @field(MultiBaseCodec, field.name);
-        if (std.mem.eql(u8, codec.code(), code)) {
-            const max_len = codec.calcSizeForDecode(rest);
-            var dest = try allocator.alloc(u8, max_len);
-            errdefer allocator.free(dest);
-
-            const decoded = try codec.decode(dest, rest);
-            if (decoded.len < dest.len) {
-                const resized = allocator.realloc(dest, decoded.len) catch |err| {
-                    allocator.free(dest);
-                    return err;
-                };
-                dest = resized;
-            }
-            return DecodeResult{
-                .base = codec,
-                .data = dest[0..decoded.len],
-            };
-        }
-    }
-    return DecodeError.InvalidBaseString;
-}
-
-pub fn encode(allocator: std.mem.Allocator, base: MultiBaseCodec, input: []const u8) ![]u8 {
-    const needed_size = base.calcSize(input);
-    var dest = try allocator.alloc(u8, needed_size);
-    errdefer allocator.free(dest);
-
-    const encoded = base.encode(dest, input);
-    if (encoded.len < dest.len) {
-        const resized = allocator.realloc(dest, encoded.len) catch |err| {
-            allocator.free(dest);
-            return err;
-        };
-        dest = resized;
-    }
-    return dest[0..encoded.len];
-}
 
 /// MultiBaseCodec represents a multibase encoding.
 /// It is used to decode a multibase string into a byte slice.
@@ -89,8 +39,8 @@ pub const MultiBaseCodec = enum {
 
     /// Returns the code of the multibase encoding.
     /// The code is a byte slice that represents the multibase encoding.
-    pub fn code(self: *const MultiBaseCodec) []const u8 {
-        return switch (self.*) {
+    pub fn code(self: MultiBaseCodec) []const u8 {
+        return switch (self) {
             .Identity => "\x00",
             .Base2 => "0",
             .Base8 => "7",
@@ -118,56 +68,44 @@ pub const MultiBaseCodec = enum {
         };
     }
 
-    pub fn fromCode(prefix: []const u8) !MultiBaseCodec {
-        if (prefix.len == 0) return error.InvalidPrefix;
-
-        // First handle single byte prefixes
-        if (prefix.len == 1) {
-            return switch (prefix[0]) {
-                0 => .Identity,
-                '0' => .Base2,
-                '7' => .Base8,
-                '9' => .Base10,
-                'f' => .Base16Lower,
-                'F' => .Base16Upper,
-                'b' => .Base32Lower,
-                'B' => .Base32Upper,
-                'c' => .Base32PadLower,
-                'C' => .Base32PadUpper,
-                'v' => .Base32HexLower,
-                'V' => .Base32HexUpper,
-                't' => .Base32HexPadLower,
-                'T' => .Base32HexPadUpper,
-                'h' => .Base32Z,
-                'k' => .Base36Lower,
-                'K' => .Base36Upper,
-                'z' => .Base58Btc,
-                'Z' => .Base58Flickr,
-                'm' => .Base64,
-                'M' => .Base64Pad,
-                'u' => .Base64Url,
-                'U' => .Base64UrlPad,
-                else => error.InvalidPrefix,
-            };
-        }
+    pub fn fromCode(source: []const u8) ParseError!MultiBaseCodec {
+        if (source.len == 0) return ParseError.InvalidPrefix;
 
         // Handle multi-byte UTF-8 prefixes
-        if (std.mem.eql(u8, prefix, "🚀")) return .Base256Emoji;
+        if (std.mem.startsWith(u8, source, "🚀")) return .Base256Emoji;
 
-        return error.InvalidPrefix;
+        return switch (source[0]) {
+            0 => .Identity,
+            '0' => .Base2,
+            '7' => .Base8,
+            '9' => .Base10,
+            'f' => .Base16Lower,
+            'F' => .Base16Upper,
+            'b' => .Base32Lower,
+            'B' => .Base32Upper,
+            'c' => .Base32PadLower,
+            'C' => .Base32PadUpper,
+            'v' => .Base32HexLower,
+            'V' => .Base32HexUpper,
+            't' => .Base32HexPadLower,
+            'T' => .Base32HexPadUpper,
+            'h' => .Base32Z,
+            'k' => .Base36Lower,
+            'K' => .Base36Upper,
+            'z' => .Base58Btc,
+            'Z' => .Base58Flickr,
+            'm' => .Base64,
+            'M' => .Base64Pad,
+            'u' => .Base64Url,
+            'U' => .Base64UrlPad,
+            else => return ParseError.InvalidBaseString,
+        };
     }
 
-    pub fn calcDecodedSize(encoded: []const u8) !usize {
-        if (encoded.len < 1) return error.InvalidLength;
-
-        const prefix_len = std.unicode.utf8ByteSequenceLength(encoded[0]) catch return error.InvalidLength;
-        if (prefix_len > encoded.len) return error.InvalidLength;
-
-        const base = try MultiBaseCodec.fromCode(encoded[0..prefix_len]);
-        return base.calcSizeForDecode(encoded[prefix_len..]);
+    /// Returns the length of the code of the multibase encoding.
+    pub fn codeLength(self: MultiBaseCodec) usize {
+        return self.code().len;
     }
-
-
     /// Encodes a byte slice into a multibase string.
     /// The destination buffer must be large enough to hold the encoded string.
     /// Returns the encoded multibase string.
@@ -176,12 +114,12 @@ pub const MultiBaseCodec = enum {
         @memcpy(dest[0..code_str.len], code_str);
 
         const encoded = switch (self.*) {
-            .Identity => identity.encode(dest[code_str.len..], source),
-            .Base2 => base2.encode(dest[code_str.len..], source),
-            .Base8 => base8.encode(dest[code_str.len..], source),
-            .Base10 => base10.encode(dest[code_str.len..], source),
-            .Base16Lower => base16.encodeLower(dest[code_str.len..], source),
-            .Base16Upper => base16.encodeUpper(dest[code_str.len..], source),
+            .Identity => IdentityImpl.encode(dest[code_str.len..], source),
+            .Base2 => Base2Impl.encode(dest[code_str.len..], source),
+            .Base8 => Base8Impl.encode(dest[code_str.len..], source),
+            .Base10 => Base10Impl.encode(dest[code_str.len..], source),
+            .Base16Lower => Base16Impl.encodeLower(dest[code_str.len..], source),
+            .Base16Upper => Base16Impl.encodeUpper(dest[code_str.len..], source),
             .Base32Lower => base32.encode(dest[code_str.len..], source, base32.ALPHABET_LOWER, false),
             .Base32Upper => base32.encode(dest[code_str.len..], source, base32.ALPHABET_UPPER, false),
             .Base32HexLower => base32.encode(dest[code_str.len..], source, base32.ALPHABET_HEX_LOWER, false),
@@ -210,12 +148,12 @@ pub const MultiBaseCodec = enum {
     /// Returns the decoded byte slice.
     pub fn decode(self: *const MultiBaseCodec, dest: []u8, source: []const u8) ![]const u8 {
         return switch (self.*) {
-            .Identity => identity.decode(dest, source),
-            .Base2 => base2.decode(dest, source),
-            .Base8 => base8.decode(dest, source),
-            .Base10 => base10.decode(dest, source),
-            .Base16Lower => base16.decode(dest, source),
-            .Base16Upper => base16.decode(dest, source),
+            .Identity => IdentityImpl.decode(dest, source),
+            .Base2 => Base2Impl.decode(dest, source),
+            .Base8 => Base8Impl.decode(dest, source),
+            .Base10 => Base10Impl.decode(dest, source),
+            .Base16Lower => Base16Impl.decode(dest, source),
+            .Base16Upper => Base16Impl.decode(dest, source),
             .Base32Lower => base32.decode(dest, source, &base32.DECODE_TABLE_LOWER),
             .Base32Upper => base32.decode(dest, source, &base32.DECODE_TABLE_UPPER),
             .Base32HexLower => base32.decode(dest, source, &base32.DECODE_TABLE_HEX_LOWER),
@@ -299,19 +237,19 @@ pub const MultiBaseCodec = enum {
     pub fn calcSizeForDecode(self: *const MultiBaseCodec, source: []const u8) usize {
         return switch (self.*) {
             .Identity => source.len,
-            .Base2 => source.len / 8,
-            .Base8 => source.len * 3 / 8,
+            .Base2 => (source.len + 7) / 8,
+            .Base8 => (source.len * 3 + 7) / 8,
             .Base10 => source.len,
-            .Base16Lower, .Base16Upper => source.len / 2,
-            .Base32Lower, .Base32Upper, .Base32HexLower, .Base32HexUpper, .Base32PadLower, .Base32PadUpper, .Base32HexPadLower, .Base32HexPadUpper, .Base32Z => source.len * 5 / 8,
+            .Base16Lower, .Base16Upper => (source.len + 1) / 2,
+            .Base32Lower, .Base32Upper, .Base32HexLower, .Base32HexUpper, .Base32PadLower, .Base32PadUpper, .Base32HexPadLower, .Base32HexPadUpper, .Base32Z => (source.len * 5 + 7) / 8,
             .Base36Lower, .Base36Upper => source.len,
             .Base58Flickr, .Base58Btc => source.len,
-            .Base64, .Base64Url, .Base64Pad, .Base64UrlPad => source.len * 3 / 4,
-            .Base256Emoji => source.len / 4, // First emoji is the multibase prefix
+            .Base64, .Base64Url, .Base64Pad, .Base64UrlPad => (source.len * 3 + 3) / 4,
+            .Base256Emoji => (source.len + 3) / 4,
         };
     }
 
-    pub const identity = struct {
+    pub const IdentityImpl = struct {
         pub fn encode(dest: []u8, source: []const u8) []const u8 {
             @memcpy(dest[0..source.len], source);
             return dest[0..source.len];
@@ -323,7 +261,7 @@ pub const MultiBaseCodec = enum {
         }
     };
 
-    pub const base2 = struct {
+    pub const Base2Impl = struct {
         const Vec = @Vector(16, u8);
         const ascii_zero: Vec = @splat('0');
         const ascii_one: Vec = @splat('1');
@@ -368,7 +306,7 @@ pub const MultiBaseCodec = enum {
                 const chunk = @as(Vec, source[i..][0..16].*);
                 const is_valid = @reduce(.And, chunk >= ascii_zero) and
                     @reduce(.And, chunk <= ascii_one);
-                if (!is_valid) return DecodeError.InvalidChar;
+                if (!is_valid) return ParseError.InvalidChar;
             }
 
             // Process 16 bits (2 bytes) at once
@@ -388,7 +326,7 @@ pub const MultiBaseCodec = enum {
             var bits: u4 = 0;
             while (i < source.len) : (i += 1) {
                 const c = source[i];
-                if (c < '0' or c > '1') return DecodeError.InvalidChar;
+                if (c < '0' or c > '1') return ParseError.InvalidChar;
 
                 current_byte = (current_byte << 1) | (c - '0');
                 bits += 1;
@@ -409,7 +347,7 @@ pub const MultiBaseCodec = enum {
         }
     };
 
-    pub const base8 = struct {
+    pub const Base8Impl = struct {
         const Vec = @Vector(16, u8);
         const ascii_zero: Vec = @splat('0');
         const ascii_seven: Vec = @splat('7');
@@ -457,7 +395,7 @@ pub const MultiBaseCodec = enum {
             return dest[0..dest_index];
         }
 
-        pub fn decode(dest: []u8, source: []const u8) DecodeError![]const u8 {
+        pub fn decode(dest: []u8, source: []const u8) ParseError![]const u8 {
             var dest_index: usize = 0;
             var i: usize = 0;
 
@@ -466,7 +404,7 @@ pub const MultiBaseCodec = enum {
                 const chunk = @as(Vec, source[i..][0..16].*);
                 const is_valid = @reduce(.And, chunk >= ascii_zero) and
                     @reduce(.And, chunk <= ascii_seven);
-                if (!is_valid) return DecodeError.InvalidChar;
+                if (!is_valid) return ParseError.InvalidChar;
             }
 
             // Process 8 octal digits (3 bytes) at once
@@ -488,7 +426,7 @@ pub const MultiBaseCodec = enum {
 
             while (i < source.len) : (i += 1) {
                 const c = source[i];
-                if (c < '0' or c > '7') return DecodeError.InvalidChar;
+                if (c < '0' or c > '7') return ParseError.InvalidChar;
 
                 bits = (bits << 3) | (c - '0');
                 bit_count += 3;
@@ -504,7 +442,7 @@ pub const MultiBaseCodec = enum {
         }
     };
 
-    pub const base10 = struct {
+    pub const Base10Impl = struct {
         pub fn encode(dest: []u8, source: []const u8) []const u8 {
             if (source.len == 0) {
                 dest[0] = '0';
@@ -559,7 +497,7 @@ pub const MultiBaseCodec = enum {
             return dest[0..dest_index];
         }
 
-        pub fn decode(dest: []u8, source: []const u8) DecodeError![]const u8 {
+        pub fn decode(dest: []u8, source: []const u8) ParseError![]const u8 {
             if (source.len == 0) return dest[0..0];
 
             var dest_index: usize = 0;
@@ -578,7 +516,7 @@ pub const MultiBaseCodec = enum {
                 const chunk = @as(Vec, source[i..][0..16].*);
                 const valid_digits = @reduce(.And, chunk >= ascii_zero) and @reduce(.And, chunk <= ascii_nine);
                 if (!valid_digits) {
-                    return DecodeError.InvalidChar;
+                    return ParseError.InvalidChar;
                 }
             }
 
@@ -592,7 +530,7 @@ pub const MultiBaseCodec = enum {
 
             // Convert decimal to bytes
             for (source) |c| {
-                if (c < '0' or c > '9') return DecodeError.InvalidChar;
+                if (c < '0' or c > '9') return ParseError.InvalidChar;
 
                 var carry: u16 = c - '0';
                 var j: usize = 0;
@@ -617,7 +555,7 @@ pub const MultiBaseCodec = enum {
         }
     };
 
-    pub const base16 = struct {
+    pub const Base16Impl = struct {
         const ALPHABET_LOWER = "0123456789abcdef";
         const ALPHABET_UPPER = "0123456789ABCDEF";
         const Vec = @Vector(16, u8);
@@ -683,8 +621,8 @@ pub const MultiBaseCodec = enum {
             return dest[0..dest_index];
         }
 
-        pub fn decode(dest: []u8, source: []const u8) DecodeError![]const u8 {
-            if (source.len % 2 != 0) return DecodeError.InvalidChar;
+        pub fn decode(dest: []u8, source: []const u8) ParseError![]const u8 {
+            if (source.len % 2 != 0) return ParseError.InvalidChar;
 
             var dest_index: usize = 0;
             var i: usize = 0;
@@ -694,7 +632,7 @@ pub const MultiBaseCodec = enum {
                 inline for (0..8) |j| {
                     const high = DECODE_TABLE[source[i + j * 2]];
                     const low = DECODE_TABLE[source[i + j * 2 + 1]];
-                    if (high == 0xFF or low == 0xFF) return DecodeError.InvalidChar;
+                    if (high == 0xFF or low == 0xFF) return ParseError.InvalidChar;
                     dest[dest_index + j] = (high << 4) | low;
                 }
                 dest_index += 8;
@@ -704,7 +642,7 @@ pub const MultiBaseCodec = enum {
             while (i < source.len) : (i += 2) {
                 const high = DECODE_TABLE[source[i]];
                 const low = DECODE_TABLE[source[i + 1]];
-                if (high == 0xFF or low == 0xFF) return DecodeError.InvalidChar;
+                if (high == 0xFF or low == 0xFF) return ParseError.InvalidChar;
                 dest[dest_index] = (high << 4) | low;
                 dest_index += 1;
             }
@@ -796,7 +734,7 @@ pub const MultiBaseCodec = enum {
             return dest[0..dest_index];
         }
 
-        pub fn decode(dest: []u8, source: []const u8, decode_table: *const [256]u8) DecodeError![]const u8 {
+        pub fn decode(dest: []u8, source: []const u8, decode_table: *const [256]u8) ParseError![]const u8 {
             var dest_index: usize = 0;
             var bits: u16 = 0;
             var bit_count: u4 = 0;
@@ -805,7 +743,7 @@ pub const MultiBaseCodec = enum {
                 if (c == PADDING) continue;
 
                 const value = decode_table[c];
-                if (value == 0xFF) return DecodeError.InvalidChar;
+                if (value == 0xFF) return ParseError.InvalidChar;
 
                 bits = (bits << 5) | value;
                 bit_count += 5;
@@ -949,7 +887,7 @@ pub const MultiBaseCodec = enum {
             return dest[0..dest_index];
         }
 
-        pub fn decode(dest: []u8, source: []const u8, alphabet: []const u8) DecodeError![]const u8 {
+        pub fn decode(dest: []u8, source: []const u8, alphabet: []const u8) ParseError![]const u8 {
             if (source.len == 0) return dest[0..0];
 
             const decode_table = if (alphabet.ptr == ALPHABET_LOWER.ptr)
@@ -973,7 +911,7 @@ pub const MultiBaseCodec = enum {
             // Convert base36 to bytes using lookup table
             for (source[leading_zeros..]) |c| {
                 const value = decode_table[c];
-                if (value == 0xFF) return DecodeError.InvalidChar;
+                if (value == 0xFF) return ParseError.InvalidChar;
 
                 var carry: u16 = value;
                 var j: usize = 0;
@@ -1125,7 +1063,7 @@ pub const MultiBaseCodec = enum {
             return dest[0..dest_index];
         }
 
-        pub fn decodeBtc(dest: []u8, source: []const u8) DecodeError![]const u8 {
+        pub fn decodeBtc(dest: []u8, source: []const u8) ParseError![]const u8 {
             if (source.len == 0) return dest[0..0];
 
             var dest_index: usize = 0;
@@ -1144,7 +1082,7 @@ pub const MultiBaseCodec = enum {
             // Convert base58 to bytes using lookup table
             for (source[leading_zeros..]) |c| {
                 const value = DECODE_TABLE_BTC[c];
-                if (value == 0xFF) return DecodeError.InvalidChar;
+                if (value == 0xFF) return ParseError.InvalidChar;
 
                 var carry: u16 = value;
                 var j: usize = 0;
@@ -1167,7 +1105,7 @@ pub const MultiBaseCodec = enum {
             return dest[0..dest_index];
         }
 
-        pub fn decodeFlickr(dest: []u8, source: []const u8) DecodeError![]const u8 {
+        pub fn decodeFlickr(dest: []u8, source: []const u8) ParseError![]const u8 {
             if (source.len == 0) return dest[0..0];
 
             var dest_index: usize = 0;
@@ -1186,7 +1124,7 @@ pub const MultiBaseCodec = enum {
             // Convert base58 to bytes using lookup table
             for (source[leading_zeros..]) |c| {
                 const value = DECODE_TABLE_FLICKR[c];
-                if (value == 0xFF) return DecodeError.InvalidChar;
+                if (value == 0xFF) return ParseError.InvalidChar;
 
                 var carry: u16 = value;
                 var j: usize = 0;
@@ -1289,10 +1227,10 @@ pub const MultiBaseCodec = enum {
             var i: usize = 0;
 
             while (i < source.len) {
-                const len = @as(usize, std.unicode.utf8ByteSequenceLength(source[i]) catch return DecodeError.InvalidBaseString);
-                const codepoint = std.unicode.utf8Decode(source[i..][0..len]) catch return DecodeError.InvalidBaseString;
+                const len = @as(usize, std.unicode.utf8ByteSequenceLength(source[i]) catch return ParseError.InvalidBaseString);
+                const codepoint = std.unicode.utf8Decode(source[i..][0..len]) catch return ParseError.InvalidBaseString;
                 const byte = REVERSE_LOOKUP[codepoint];
-                if (byte == 0xFF) return DecodeError.InvalidBaseString;
+                if (byte == 0xFF) return ParseError.InvalidBaseString;
                 dest[dest_index] = byte;
                 dest_index += 1;
                 i += len;
@@ -2378,14 +2316,20 @@ test "multibase encode/decode" {
     // Test basic encoding/decoding
     {
         const input = "hello world";
-        const encoded = try encode(allocator, .Base58Btc, input);
-        defer allocator.free(encoded);
+        const needed_size = MultiBaseCodec.Base58Btc.calcSize(input);
+        const dest = try allocator.alloc(u8, needed_size);
+        const encoded = MultiBaseCodec.Base58Btc.encode(dest, input);
+        defer allocator.free(dest);
         try testing.expectEqualStrings("zStV1DL6CwTryKyV", encoded);
 
-        const decoded = try decode(allocator, encoded);
-        defer allocator.free(decoded.data);
-        try testing.expectEqual(MultiBaseCodec.Base58Btc, decoded.base);
-        try testing.expectEqualStrings(input, decoded.data);
+        const base_codec = try MultiBaseCodec.fromCode(encoded);
+        const base_source = encoded[base_codec.codeLength()..];
+        const needed_decode_size = base_codec.calcSizeForDecode(base_source);
+        const dest_decode = try allocator.alloc(u8, needed_decode_size);
+        const decoded = try base_codec.decode(dest_decode, base_source);
+        defer allocator.free(dest_decode);
+        try testing.expectEqual(MultiBaseCodec.Base58Btc, base_codec);
+        try testing.expectEqualStrings(input, decoded);
     }
 
     // Test with different bases
@@ -2393,40 +2337,57 @@ test "multibase encode/decode" {
         const input = "Hello World!";
 
         // Base32
-        const b32_encoded = try encode(allocator, .Base32Lower, input);
-        defer allocator.free(b32_encoded);
-        try testing.expectEqualStrings("bjbswy3dpeblw64tmmqqq", b32_encoded);
+        const needed_size = MultiBaseCodec.Base32Lower.calcSize(input);
+        const dest = try allocator.alloc(u8, needed_size);
+        var encoded = MultiBaseCodec.Base32Lower.encode(dest, input);
+        defer allocator.free(dest);
+        try testing.expectEqualStrings("bjbswy3dpeblw64tmmqqq", encoded);
 
-        const b32_decoded = try decode(allocator, b32_encoded);
-        defer allocator.free(b32_decoded.data);
-        try testing.expectEqual(MultiBaseCodec.Base32Lower, b32_decoded.base);
-        try testing.expectEqualStrings(input, b32_decoded.data);
+        var base_codec = try MultiBaseCodec.fromCode(encoded);
+        const base_source = encoded[base_codec.codeLength()..];
+        const needed_decode_size = base_codec.calcSizeForDecode(base_source);
+        const dest_decode = try allocator.alloc(u8, needed_decode_size);
+        const decoded = try base_codec.decode(dest_decode, base_source);
+        defer allocator.free(dest_decode);
+        try testing.expectEqual(MultiBaseCodec.Base32Lower, base_codec);
+        try testing.expectEqualStrings(input, decoded);
 
         // Base64
-        const b64_encoded = try encode(allocator, .Base64, input);
-        defer allocator.free(b64_encoded);
-        try testing.expectEqualStrings("mSGVsbG8gV29ybGQh", b64_encoded);
+        const needed_size2 = MultiBaseCodec.Base64.calcSize(input);
+        const dest2 = try allocator.alloc(u8, needed_size2);
+        var encoded2 = MultiBaseCodec.Base64.encode(dest2, input);
+        defer allocator.free(dest2);
+        try testing.expectEqualStrings("mSGVsbG8gV29ybGQh", encoded2);
 
-        const b64_decoded = try decode(allocator, b64_encoded);
-        defer allocator.free(b64_decoded.data);
-        try testing.expectEqual(MultiBaseCodec.Base64, b64_decoded.base);
-        try testing.expectEqualStrings(input, b64_decoded.data);
+        base_codec = try MultiBaseCodec.fromCode(encoded2);
+        const base_source2 = encoded2[base_codec.codeLength()..];
+        const needed_decode_size2 = base_codec.calcSizeForDecode(base_source2);
+        const dest_decode2 = try allocator.alloc(u8, needed_decode_size2);
+        const decoded2 = try base_codec.decode(dest_decode2, base_source2);
+        defer allocator.free(dest_decode2);
+        try testing.expectEqual(MultiBaseCodec.Base64, base_codec);
+        try testing.expectEqualStrings(input, decoded2);
+
+        // Base256Emoji
+        const needed_size3 = MultiBaseCodec.Base256Emoji.calcSize(input);
+        const dest3 = try allocator.alloc(u8, needed_size3);
+        const encoded3 = MultiBaseCodec.Base256Emoji.encode(dest3, input);
+        defer allocator.free(dest3);
+        try testing.expectEqualStrings("🚀😄✋🍀🍀😓😅😑😓🥺🍀😳👏", encoded3);
+
+        base_codec = try MultiBaseCodec.fromCode(encoded3);
+        const base_source3 = encoded3[base_codec.codeLength()..];
+        const needed_decode_size3 = base_codec.calcSizeForDecode(base_source3);
+        const dest_decode3 = try allocator.alloc(u8, needed_decode_size3);
+        const decoded3 = try base_codec.decode(dest_decode3, base_source3);
+        defer allocator.free(dest_decode3);
+        try testing.expectEqual(MultiBaseCodec.Base256Emoji, base_codec);
+        try testing.expectEqualStrings(input, decoded3);
     }
 
     // Test error cases
     {
-        // Empty input
-        try testing.expectError(DecodeError.InvalidBaseString, decode(allocator, ""));
-
-        // Invalid base prefix
-        try testing.expectError(DecodeError.InvalidBaseString, decode(allocator, "1abc"));
-
-        // Invalid characters for base
-        const invalid = try encode(allocator, .Base32Lower, "test");
-        defer allocator.free(invalid);
-        var corrupted = try allocator.dupe(u8, invalid);
-        defer allocator.free(corrupted);
-        corrupted[1] = '!'; // Invalid character for base32
-        try testing.expectError(error.InvalidChar, decode(allocator, corrupted));
+        const input = "😄✋🍀🍀😓😅😑😓🥺🍀😳👏";
+        try testing.expectError(ParseError.InvalidBaseString, MultiBaseCodec.fromCode(input));
     }
 }

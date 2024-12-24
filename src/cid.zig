@@ -327,34 +327,34 @@ pub fn Cid(comptime S: usize) type {
         //     return try Self.fromBytes(allocator, decoded);
         // }
 
-        pub fn fromString(allocator: Allocator, cid_str: []const u8) !Self {
-            // Find IPFS delimiter if present
-            const hash = if (std.mem.indexOf(u8, cid_str, IPFS_DELIMITER)) |index|
-                cid_str[index + IPFS_DELIMITER.len ..]
-            else
-                cid_str;
-
-            if (hash.len < 2) return CidError.InputTooShort;
-
-            // Handle CIDv0 vs CIDv1
-            const decoded = if (CidVersion.isV0Str(hash)) blk: {
-                const needed_size = MultiBaseCodec.Base58Btc.calcSizeForDecode(hash);
-                var dest = try allocator.alloc(u8, needed_size);
-                errdefer allocator.free(dest);
-
-                const result = try MultiBaseCodec.Base58Btc.decode(dest, hash);
-                if (result.len < dest.len) {
-                    dest = try allocator.realloc(dest, result.len);
-                }
-                break :blk dest[0..result.len];
-            } else blk: {
-                const decoded_result = try multibase.decode(allocator, hash);
-                break :blk decoded_result.data;
-            };
-
-            defer allocator.free(decoded);
-            return try Self.fromBytes(allocator, decoded);
-        }
+        // pub fn fromString(allocator: Allocator, cid_str: []const u8) !Self {
+        //     // Find IPFS delimiter if present
+        //     const hash = if (std.mem.indexOf(u8, cid_str, IPFS_DELIMITER)) |index|
+        //         cid_str[index + IPFS_DELIMITER.len ..]
+        //     else
+        //         cid_str;
+        //
+        //     if (hash.len < 2) return CidError.InputTooShort;
+        //
+        //     // Handle CIDv0 vs CIDv1
+        //     const decoded = if (CidVersion.isV0Str(hash)) blk: {
+        //         const needed_size = MultiBaseCodec.Base58Btc.calcSizeForDecode(hash);
+        //         var dest = try allocator.alloc(u8, needed_size);
+        //         errdefer allocator.free(dest);
+        //
+        //         const result = try MultiBaseCodec.Base58Btc.decode(dest, hash);
+        //         if (result.len < dest.len) {
+        //             dest = try allocator.realloc(dest, result.len);
+        //         }
+        //         break :blk dest[0..result.len];
+        //     } else blk: {
+        //         const decoded_result = try multibase.decode(allocator, hash);
+        //         break :blk decoded_result.data;
+        //     };
+        //
+        //     defer allocator.free(decoded);
+        //     return try Self.fromBytes(allocator, decoded);
+        // }
     };
 }
 
@@ -488,45 +488,45 @@ test "Cid error cases" {
     }
 }
 
-test "Cid fromString1" {
-    const testing = std.testing;
-    const allocator = testing.allocator;
-
-    // Test CIDv0
-    {
-        const cidstr = "QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n";
-        const cid = try Cid(32).fromString(allocator, cidstr);
-
-        try testing.expectEqual(cid.version, .V0);
-        try testing.expectEqual(cid.codec, Multicodec.DAG_PB.getCode());
-    }
-
-    // Test CIDv1
-    {
-        const cidstr = "bafkreibme22gw2h7y2h7tg2fhqotaqjucnbc24deqo72b6mkl2egezxhvy";
-        const cid = try Cid(32).fromString(allocator, cidstr);
-
-        try testing.expectEqual(cid.version, .V1);
-        try testing.expectEqual(cid.codec, Multicodec.RAW.getCode());
-        const hash = try multihash.MultihashCodecs.SHA2_256.digest("foo");
-        try testing.expectEqualSlices(u8, hash.getDigest(), cid.getHash());
-    }
-
-    // Test with IPFS path
-    {
-        const cidstr = "/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n";
-        const cid = try Cid(32).fromString(allocator, cidstr);
-
-        try testing.expectEqual(cid.version, .V0);
-        try testing.expectEqual(cid.codec, Multicodec.DAG_PB.getCode());
-    }
-
-    // Test error cases
-    {
-        // Too short
-        try testing.expectError(CidError.InputTooShort, Cid(32).fromString(allocator, "a"));
-
-        // Invalid base encoding
-        try testing.expectError(multibase.DecodeError.InvalidChar, Cid(32).fromString(allocator, "bafybeig@#$%"));
-    }
-}
+// test "Cid fromString1" {
+//     const testing = std.testing;
+//     const allocator = testing.allocator;
+//
+//     // Test CIDv0
+//     {
+//         const cidstr = "QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n";
+//         const cid = try Cid(32).fromString(allocator, cidstr);
+//
+//         try testing.expectEqual(cid.version, .V0);
+//         try testing.expectEqual(cid.codec, Multicodec.DAG_PB.getCode());
+//     }
+//
+//     // Test CIDv1
+//     {
+//         const cidstr = "bafkreibme22gw2h7y2h7tg2fhqotaqjucnbc24deqo72b6mkl2egezxhvy";
+//         const cid = try Cid(32).fromString(allocator, cidstr);
+//
+//         try testing.expectEqual(cid.version, .V1);
+//         try testing.expectEqual(cid.codec, Multicodec.RAW.getCode());
+//         const hash = try multihash.MultihashCodecs.SHA2_256.digest("foo");
+//         try testing.expectEqualSlices(u8, hash.getDigest(), cid.getHash());
+//     }
+//
+//     // Test with IPFS path
+//     {
+//         const cidstr = "/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n";
+//         const cid = try Cid(32).fromString(allocator, cidstr);
+//
+//         try testing.expectEqual(cid.version, .V0);
+//         try testing.expectEqual(cid.codec, Multicodec.DAG_PB.getCode());
+//     }
+//
+//     // Test error cases
+//     {
+//         // Too short
+//         try testing.expectError(CidError.InputTooShort, Cid(32).fromString(allocator, "a"));
+//
+//         // Invalid base encoding
+//         try testing.expectError(multibase.ParseError.InvalidChar, Cid(32).fromString(allocator, "bafybeig@#$%"));
+//     }
+// }
