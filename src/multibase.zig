@@ -187,7 +187,7 @@ pub const MultiBaseCodec = enum {
     }
 
     /// Calculates the size needed for encoding the given source bytes
-    pub fn calcSize(self: *const MultiBaseCodec, source: []const u8) usize {
+    pub fn encodedLen(self: *const MultiBaseCodec, source: []const u8) usize {
         const code_len = self.code().len;
         return code_len + switch (self.*) {
             .Identity => source.len,
@@ -233,7 +233,7 @@ pub const MultiBaseCodec = enum {
     }
 
     /// Calculates the maximum size needed for source_size bytes when encoding
-    pub fn calcSizeBySize(self: *const MultiBaseCodec, source_size: usize) usize {
+    pub fn encodedLenBySize(self: *const MultiBaseCodec, source_size: usize) usize {
         const code_len = self.code().len;
         return code_len + switch (self.*) {
             .Identity => source_size,
@@ -280,7 +280,7 @@ pub const MultiBaseCodec = enum {
         };
     }
     /// Calculates the maximum size needed for decoding the given encoded string
-    pub fn calcSizeForDecode(self: *const MultiBaseCodec, source: []const u8) usize {
+    pub fn decodedLen(self: *const MultiBaseCodec, source: []const u8) usize {
         return switch (self.*) {
             .Identity => source.len,
             .Base2 => @divTrunc((source.len + 7), 8),
@@ -296,7 +296,7 @@ pub const MultiBaseCodec = enum {
     }
 
     /// Calculates the maximum size needed for decoding the given encoded string
-    pub fn calcSizeForDecodeBySize(self: *const MultiBaseCodec, source_size: usize) usize {
+    pub fn decodedLenBySize(self: *const MultiBaseCodec, source_size: usize) usize {
         return switch (self.*) {
             .Identity => source_size,
             .Base2 => @divTrunc((source_size + 7), 8),
@@ -2378,7 +2378,7 @@ test "multibase encode/decode" {
     // Test basic encoding/decoding
     {
         const input = "hello world";
-        const needed_size = MultiBaseCodec.Base58Btc.calcSize(input);
+        const needed_size = MultiBaseCodec.Base58Btc.encodedLen(input);
         const dest = try allocator.alloc(u8, needed_size);
         const encoded = MultiBaseCodec.Base58Btc.encode(dest, input);
         defer allocator.free(dest);
@@ -2386,7 +2386,7 @@ test "multibase encode/decode" {
 
         const base_codec = try MultiBaseCodec.fromCode(encoded);
         const base_source = encoded[base_codec.codeLength()..];
-        const needed_decode_size = base_codec.calcSizeForDecode(base_source);
+        const needed_decode_size = base_codec.decodedLen(base_source);
         const dest_decode = try allocator.alloc(u8, needed_decode_size);
         const decoded = try base_codec.decode(dest_decode, base_source);
         defer allocator.free(dest_decode);
@@ -2399,7 +2399,7 @@ test "multibase encode/decode" {
         const input = "Hello World!";
 
         // Base32
-        const needed_size = MultiBaseCodec.Base32Lower.calcSize(input);
+        const needed_size = MultiBaseCodec.Base32Lower.encodedLen(input);
         const dest = try allocator.alloc(u8, needed_size);
         var encoded = MultiBaseCodec.Base32Lower.encode(dest, input);
         defer allocator.free(dest);
@@ -2407,7 +2407,7 @@ test "multibase encode/decode" {
 
         var base_codec = try MultiBaseCodec.fromCode(encoded);
         const base_source = encoded[base_codec.codeLength()..];
-        const needed_decode_size = base_codec.calcSizeForDecode(base_source);
+        const needed_decode_size = base_codec.decodedLen(base_source);
         const dest_decode = try allocator.alloc(u8, needed_decode_size);
         const decoded = try base_codec.decode(dest_decode, base_source);
         defer allocator.free(dest_decode);
@@ -2415,7 +2415,7 @@ test "multibase encode/decode" {
         try testing.expectEqualStrings(input, decoded);
 
         // Base64
-        const needed_size2 = MultiBaseCodec.Base64.calcSize(input);
+        const needed_size2 = MultiBaseCodec.Base64.encodedLen(input);
         const dest2 = try allocator.alloc(u8, needed_size2);
         var encoded2 = MultiBaseCodec.Base64.encode(dest2, input);
         defer allocator.free(dest2);
@@ -2423,7 +2423,7 @@ test "multibase encode/decode" {
 
         base_codec = try MultiBaseCodec.fromCode(encoded2);
         const base_source2 = encoded2[base_codec.codeLength()..];
-        const needed_decode_size2 = base_codec.calcSizeForDecode(base_source2);
+        const needed_decode_size2 = base_codec.decodedLen(base_source2);
         const dest_decode2 = try allocator.alloc(u8, needed_decode_size2);
         const decoded2 = try base_codec.decode(dest_decode2, base_source2);
         defer allocator.free(dest_decode2);
@@ -2431,7 +2431,7 @@ test "multibase encode/decode" {
         try testing.expectEqualStrings(input, decoded2);
 
         // Base256Emoji
-        const needed_size3 = MultiBaseCodec.Base256Emoji.calcSize(input);
+        const needed_size3 = MultiBaseCodec.Base256Emoji.encodedLen(input);
         const dest3 = try allocator.alloc(u8, needed_size3);
         const encoded3 = MultiBaseCodec.Base256Emoji.encode(dest3, input);
         defer allocator.free(dest3);
@@ -2439,7 +2439,7 @@ test "multibase encode/decode" {
 
         base_codec = try MultiBaseCodec.fromCode(encoded3);
         const base_source3 = encoded3[base_codec.codeLength()..];
-        const needed_decode_size3 = base_codec.calcSizeForDecode(base_source3);
+        const needed_decode_size3 = base_codec.decodedLen(base_source3);
         const dest_decode3 = try allocator.alloc(u8, needed_decode_size3);
         const decoded3 = try base_codec.decode(dest_decode3, base_source3);
         defer allocator.free(dest_decode3);
@@ -2460,13 +2460,13 @@ test "Base36 and Base58 size calculations" {
     const test_data = "Hello WorldHello World  Hello World";
 
     // Base36
-    const base36_enc_size = MultiBaseCodec.Base36Upper.calcSize(test_data);
-    const base36_enc_size1 = MultiBaseCodec.Base36Upper.calcSizeBySize(test_data.len);
+    const base36_enc_size = MultiBaseCodec.Base36Upper.encodedLen(test_data);
+    const base36_enc_size1 = MultiBaseCodec.Base36Upper.encodedLenBySize(test_data.len);
     try testing.expectEqual(base36_enc_size, base36_enc_size1);
 
     // Base58
-    const base58_enc_size = MultiBaseCodec.Base58Btc.calcSize(test_data);
-    const base58_enc_size1 = MultiBaseCodec.Base58Btc.calcSizeBySize(test_data.len);
+    const base58_enc_size = MultiBaseCodec.Base58Btc.encodedLen(test_data);
+    const base58_enc_size1 = MultiBaseCodec.Base58Btc.encodedLenBySize(test_data.len);
     try testing.expectEqual(base58_enc_size, base58_enc_size1);
 
     // decode size calculation
@@ -2474,15 +2474,15 @@ test "Base36 and Base58 size calculations" {
     defer testing.allocator.free(dest);
     const encoded = MultiBaseCodec.Base36Upper.encode(dest, test_data);
 
-    const base36_dec_size2 = MultiBaseCodec.Base36Upper.calcSizeForDecodeBySize(encoded.len);
-    const base36_dec_size = MultiBaseCodec.Base36Upper.calcSizeForDecode(encoded);
+    const base36_dec_size2 = MultiBaseCodec.Base36Upper.decodedLenBySize(encoded.len);
+    const base36_dec_size = MultiBaseCodec.Base36Upper.decodedLen(encoded);
     try testing.expectEqual(base36_dec_size, base36_dec_size2);
 
     const dest2 = try testing.allocator.alloc(u8, base58_enc_size);
     defer testing.allocator.free(dest2);
     const encoded2 = MultiBaseCodec.Base58Btc.encode(dest2, test_data);
 
-    const base58_dec_size2 = MultiBaseCodec.Base58Btc.calcSizeForDecodeBySize(encoded2.len);
-    const base58_dec_size = MultiBaseCodec.Base58Btc.calcSizeForDecode(encoded2);
+    const base58_dec_size2 = MultiBaseCodec.Base58Btc.decodedLenBySize(encoded2.len);
+    const base58_dec_size = MultiBaseCodec.Base58Btc.decodedLen(encoded2);
     try testing.expectEqual(base58_dec_size, base58_dec_size2);
 }

@@ -210,7 +210,7 @@ pub fn Cid(comptime S: usize) type {
                     const codec = varint.encode(u64, self.codec.getCode(), &codec_buf);
 
                     const byte_len = version.len + codec.len + self.hash.encodedLen();
-                    return base.calcSizeBySize(byte_len);
+                    return base.encodedLenBySize(byte_len);
                 },
             };
         }
@@ -267,18 +267,18 @@ pub fn Cid(comptime S: usize) type {
             return try Self.readStream(fbs.reader());
         }
 
-        // pub fn calcDecodedSize(cid_str: []const u8) !usize {
+        // pub fn decodedLen(cid_str: []const u8) !usize {
         //     const hash = if (std.mem.indexOf(u8, cid_str, IPFS_DELIMITER)) |index|
         //         cid_str[index + IPFS_DELIMITER.len ..]
         //     else
         //         cid_str;
         //
         //     return if (CidVersion.isV0Str(hash))
-        //         MultiBaseCodec.Base58Btc.calcSizeForDecode(hash)
+        //         MultiBaseCodec.Base58Btc.decodedLen(hash)
         //     else
-        //        multibase.MultiBaseCodec.calcDecodedSize(hash);
+        //         (try MultiBaseCodec.fromCode(hash)).decode(hash);
         // }
-        //
+
         // pub fn fromString(allocator: Allocator, cid_str: []const u8, buffer: []u8) !Self {
         //     // Find IPFS delimiter if present
         //     const hash = if (std.mem.indexOf(u8, cid_str, IPFS_DELIMITER)) |index|
