@@ -4,6 +4,7 @@ const varint = @import("unsigned_varint.zig");
 const testing = std.testing;
 
 /// Multihash is a wrapper around a digest and a code.
+/// S is larger or equal to the size of the digest.
 pub fn Multihash(comptime S: usize) type {
     return struct {
         code: Multicodec,
@@ -29,12 +30,12 @@ pub fn Multihash(comptime S: usize) type {
         }
 
         /// getCode returns the code of the Multihash.
-        pub fn getCode(self: Self) Multicodec {
+        pub fn getCode(self: *const Self) Multicodec {
             return self.code;
         }
 
         /// getSize returns the size of the Multihash.
-        pub fn getSize(self: Self) u8 {
+        pub fn getSize(self: *const Self) u8 {
             return self.size;
         }
 

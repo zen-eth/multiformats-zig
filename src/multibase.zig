@@ -106,6 +106,7 @@ pub const MultiBaseCodec = enum {
     pub fn codeLength(self: MultiBaseCodec) usize {
         return self.code().len;
     }
+
     /// Encodes a byte slice into a multibase string.
     /// The destination buffer must be large enough to hold the encoded string.
     /// Returns the encoded multibase string.
