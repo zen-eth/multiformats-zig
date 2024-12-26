@@ -351,7 +351,7 @@ pub const DecodedCID = struct {
     codec: MultiBaseCodec,
     data: []const u8,
 
-    pub fn toCID(comptime S: usize, self: *const DecodedCID, dest: []u8) !CID(S) {
+    pub fn toCID(self: *const DecodedCID, comptime S: usize, dest: []u8) !CID(S) {
         const decoded = try self.codec.decode(dest, self.data);
         return CID(S).fromBytes(decoded);
     }
@@ -553,45 +553,59 @@ test "Cid error cases" {
     }
 }
 
-// test "Cid fromString1" {
-//     const testing = std.testing;
-//     const allocator = testing.allocator;
-//
-//     // Test CIDv0
-//     {
-//         const cidstr = "QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n";
-//         const cid = try Cid(32).fromString(allocator, cidstr);
-//
-//         try testing.expectEqual(cid.version, .V0);
-//         try testing.expectEqual(cid.codec, Multicodec.DAG_PB.getCode());
-//     }
-//
-//     // Test CIDv1
-//     {
-//         const cidstr = "bafkreibme22gw2h7y2h7tg2fhqotaqjucnbc24deqo72b6mkl2egezxhvy";
-//         const cid = try Cid(32).fromString(allocator, cidstr);
-//
-//         try testing.expectEqual(cid.version, .V1);
-//         try testing.expectEqual(cid.codec, Multicodec.RAW.getCode());
-//         const hash = try multihash.MultihashCodecs.SHA2_256.digest("foo");
-//         try testing.expectEqualSlices(u8, hash.getDigest(), cid.getHash());
-//     }
-//
-//     // Test with IPFS path
-//     {
-//         const cidstr = "/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n";
-//         const cid = try Cid(32).fromString(allocator, cidstr);
-//
-//         try testing.expectEqual(cid.version, .V0);
-//         try testing.expectEqual(cid.codec, Multicodec.DAG_PB.getCode());
-//     }
-//
-//     // Test error cases
-//     {
-//         // Too short
-//         try testing.expectError(CidError.InputTooShort, Cid(32).fromString(allocator, "a"));
-//
-//         // Invalid base encoding
-//         try testing.expectError(multibase.ParseError.InvalidChar, Cid(32).fromString(allocator, "bafybeig@#$%"));
-//     }
-// }
+test "Cid fromString1" {
+    const testing = std.testing;
+    const allocator = testing.allocator;
+
+    // Test CIDv0
+    {
+        const cidstr = "QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n";
+        const decoded_cid = try decodedCID(cidstr);
+        const dest = try allocator.alloc(u8, decoded_cid.dest_len);
+        defer allocator.free(dest);
+        const cid = try decoded_cid.toCID(32, dest);
+
+        try testing.expectEqual(cid.version, .V0);
+        try testing.expectEqual(cid.codec, Multicodec.DAG_PB);
+    }
+
+    // Test CIDv1
+    {
+        const cidstr = "bafkreibme22gw2h7y2h7tg2fhqotaqjucnbc24deqo72b6mkl2egezxhvy";
+        const decoded_cid = try decodedCID(cidstr);
+        const dest = try allocator.alloc(u8, decoded_cid.dest_len);
+        defer allocator.free(dest);
+        const cid = try decoded_cid.toCID(64, dest);
+
+        try testing.expectEqual(cid.version, .V1);
+        try testing.expectEqual(cid.codec, Multicodec.RAW);
+        const hash = try multihash.MultihashCodecs.SHA2_256.digest("foo");
+        try testing.expectEqualSlices(u8, hash.getDigest(), cid.getHash());
+    }
+
+    // Test with IPFS path
+    {
+        const cidstr = "/ipfs/QmdfTbBqBPQ7VNxZEYEj14VmRuZBkqFbiwReogJgS1zR1n";
+        const decoded_cid = try decodedCID(cidstr);
+        const dest = try allocator.alloc(u8, decoded_cid.dest_len);
+        defer allocator.free(dest);
+        const cid = try decoded_cid.toCID(32, dest);
+
+        try testing.expectEqual(cid.version, .V0);
+        try testing.expectEqual(cid.codec, Multicodec.DAG_PB);
+    }
+
+    // Test error cases
+    {
+        // Too short
+        const cidstr = "a";
+        try testing.expectError(ParseError.InputTooShort, decodedCID(cidstr));
+
+        // Invalid base encoding
+        const cidstr1 = "bafybeig@#$%";
+        const decoded_cid1 = try decodedCID(cidstr1);
+        const dest = try allocator.alloc(u8, decoded_cid1.dest_len);
+        defer allocator.free(dest);
+        try testing.expectError(multibase.ParseError.InvalidChar, decoded_cid1.toCID(64, dest));
+    }
+}
