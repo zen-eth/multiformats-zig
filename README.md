@@ -5,7 +5,7 @@ This is the zig implementation of the multiformats [spec](https://github.com/mul
 
 ## Build
 ```bash
-git clone --recurse-submodules git@github.com:optimism-java/multiformats-zig.git
+git clone --recurse-submodules git@github.com:zen-eth/multiformats-zig.git
 cd multiformats-zig
 zig build test --summary all
 ```
