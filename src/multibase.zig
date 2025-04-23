@@ -325,28 +325,21 @@ pub const MultiBaseCodec = enum {
     };
 
     pub const Base2Impl = struct {
+        const alphabet_chars = "01".*;
         const Vec = @Vector(16, u8);
         const ascii_zero: Vec = @splat('0');
         const ascii_one: Vec = @splat('1');
 
         pub fn encode(dest: []u8, source: []const u8) []const u8 {
-            var dest_index: usize = 0;
-            var i: usize = 0;
-
-            // Process 2 bytes at once using unrolled loops
-            while (i + 2 <= source.len) : (i += 2) {
-                const value = @as(u16, source[i]) << 8 | source[i + 1];
-
-                // Unrolled loop for first byte
-                inline for (0..8) |j| {
-                    dest[dest_index + j] = '0' + @as(u8, @truncate((value >> (15 - j)) & 1));
+            var out_idx: usize = 0;
+            for (source) |byte| {
+                inline for (0..8) |i| {
+                    dest[out_idx + i] = alphabet_chars[(byte >> (7 - i)) & 1];
                 }
-                // Unrolled loop for second byte
-                inline for (0..8) |j| {
-                    dest[dest_index + j + 8] = '0' + @as(u8, @truncate((value >> (7 - j)) & 1));
-                }
-                dest_index += 16;
+                out_idx += 8;
             }
+            return dest[0..out_idx];
+        }
 
             // Handle remaining byte if any
             if (i < source.len) {
