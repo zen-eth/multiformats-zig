@@ -754,57 +754,44 @@ pub const MultiBaseCodec = enum {
         }
 
         pub fn encode(dest: []u8, source: []const u8, alphabet: []const u8, pad: bool) []const u8 {
-            var dest_index: usize = 0;
-            var bits: u16 = 0;
-            var bit_count: u4 = 0;
-
-            // SIMD optimization for 8-byte chunks
-            const Vec = @Vector(8, u8);
-            const chunk_size = 8;
-            const full_chunks = source.len / chunk_size;
-
-            var i: usize = 0;
-            while (i < full_chunks) : (i += 1) {
-                const vec = @as(Vec, source[i * chunk_size ..][0..chunk_size].*);
-                // Process 8 bytes at once using SIMD
-                inline for (0..8) |j| {
-                    const byte = vec[j];
-                    bits = (bits << 8) | byte;
-                    bit_count += 8;
-                    while (bit_count >= 5) {
-                        bit_count -= 5;
-                        const index = (bits >> bit_count) & 0x1F;
-                        dest[dest_index] = alphabet[index];
-                        dest_index += 1;
-                    }
+            var idx: usize = 0;
+            var out_idx: usize = 0;
+            // read 40 bits every loop
+            var carry = [_]u8{0} ** 8;
+            while (idx + 5 <= source.len) : (idx += 5) {
+                // [0x01, 0x02, 0x03, 0x04] => (0x04 << 24) | (0x03 << 16) | (0x02 << 8) | 0x01
+                @memcpy(carry[3..], source[idx..][0..5]);
+                const bits = std.mem.readInt(u64, carry[0..], .little);
+                inline for (0..8) |i| {
+                    dest[out_idx + i] = alphabet[(bits >> (i * 5)) & 0x1f];
                 }
             }
 
-            // Handle remaining bytes
-            for (source[full_chunks * chunk_size ..]) |byte| {
+            // handle remaining bytes, max 4 byte
+            var bits: u16 = 0;
+            var bit_count: u4 = 0;
+            for (source[idx..]) |byte| {
                 bits = (bits << 8) | byte;
                 bit_count += 8;
                 while (bit_count >= 5) {
                     bit_count -= 5;
                     const index = (bits >> bit_count) & 0x1F;
-                    dest[dest_index] = alphabet[index];
-                    dest_index += 1;
+                    dest[out_idx] = alphabet[index];
+                    out_idx += 1;
                 }
             }
-
             if (bit_count > 0) {
                 const index = (bits << (5 - bit_count)) & 0x1F;
-                dest[dest_index] = alphabet[index];
-                dest_index += 1;
+                dest[out_idx] = alphabet[index];
+                out_idx += 1;
             }
-
             if (pad) {
-                const padding = (8 - dest_index % 8) % 8;
-                @memset(dest[dest_index..][0..padding], PADDING);
-                dest_index += padding;
+                const padding = (8 - out_idx % 8) % 8;
+                @memset(dest[out_idx..][0..padding], PADDING);
+                out_idx += padding;
             }
 
-            return dest[0..dest_index];
+            return dest[0..out_idx];
         }
 
         pub fn decode(dest: []u8, source: []const u8, decode_table: *const [256]u8) ParseError![]const u8 {
@@ -1622,9 +1609,23 @@ test "Base.encode/decode base16" {
     }
 }
 
+test "Base bench encode base32" {
+    const time = std.time;
+    const source = "\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !";
+    var dest: [source.len * 8 + 1]u8 = undefined;
+    for (0..10) |_| {
+        const start_time = time.milliTimestamp();
+        for (0..1000000) |_| {
+            _ = MultiBaseCodec.Base32PadLower.encode(dest[0..], source);
+        }
+        const end_time = time.milliTimestamp();
+        const elapsed_time = end_time - start_time;
+        std.debug.print("Elapsed time: {} ms\n", .{elapsed_time});
+    }
+}
+
 test "Base.encode/decode base32" {
     const testing = std.testing;
-
     // Test Base32Lower
     {
         var dest: [256]u8 = undefined;
