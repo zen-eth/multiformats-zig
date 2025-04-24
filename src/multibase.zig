@@ -759,12 +759,13 @@ pub const MultiBaseCodec = enum {
             // read 40 bits every loop
             var carry = [_]u8{0} ** 8;
             while (idx + 5 <= source.len) : (idx += 5) {
-                // [0x01, 0x02, 0x03, 0x04] => (0x04 << 24) | (0x03 << 16) | (0x02 << 8) | 0x01
+                // [0x01, 0x02, 0x03, 0x04, 0x05] => (0x01 << 32) (0x02 << 24) | (0x03 << 16) | (0x04 << 8) | 0x05
                 @memcpy(carry[3..], source[idx..][0..5]);
-                const bits = std.mem.readInt(u64, carry[0..], .little);
+                const bits = std.mem.readInt(u64, carry[0..], .big);
                 inline for (0..8) |i| {
-                    dest[out_idx + i] = alphabet[(bits >> (i * 5)) & 0x1f];
+                    dest[out_idx + (7 - i)] = alphabet[(bits >> (i * 5)) & 0x1f];
                 }
+                out_idx += 8;
             }
 
             // handle remaining bytes, max 4 byte
@@ -1622,6 +1623,14 @@ test "Base bench encode base32" {
         const elapsed_time = end_time - start_time;
         std.debug.print("Elapsed time: {} ms\n", .{elapsed_time});
     }
+}
+
+test "Base.encode base32 lower pad" {
+    const testing = std.testing;
+    var dest: [257]u8 = undefined;
+    const source = "\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !";
+    const encoded = MultiBaseCodec.Base32PadLower.encode(dest[0..], source);
+    try testing.expectEqualStrings("aaahszltebwwc3tjeaqqaadzmvzsa3lbnzusaiiaab4wk4zanvqw42jaeeaaa6lfomqg2yloneqccaaapfsxgidnmfxgsibbaaahszltebwwc3tjeaqqaadzmvzsa3lbnzusaiiaab4wk4zanvqw42jaeeaaa6lfomqg2yloneqccaaapfsxgidnmfxgsibbaaahszltebwwc3tjeaqqaadzmvzsa3lbnzusaiiaab4wk4zanvqw42jaee======", encoded[1..]);
 }
 
 test "Base.encode/decode base32" {
