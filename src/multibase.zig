@@ -325,39 +325,23 @@ pub const MultiBaseCodec = enum {
     };
 
     pub const Base2Impl = struct {
+        const alphabet_chars = "01".*;
+        const mask = @Vector(8, u8){ 0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01 };
         const Vec = @Vector(16, u8);
         const ascii_zero: Vec = @splat('0');
         const ascii_one: Vec = @splat('1');
 
         pub fn encode(dest: []u8, source: []const u8) []const u8 {
-            var dest_index: usize = 0;
-            var i: usize = 0;
-
-            // Process 2 bytes at once using unrolled loops
-            while (i + 2 <= source.len) : (i += 2) {
-                const value = @as(u16, source[i]) << 8 | source[i + 1];
-
-                // Unrolled loop for first byte
-                inline for (0..8) |j| {
-                    dest[dest_index + j] = '0' + @as(u8, @truncate((value >> (15 - j)) & 1));
-                }
-                // Unrolled loop for second byte
-                inline for (0..8) |j| {
-                    dest[dest_index + j + 8] = '0' + @as(u8, @truncate((value >> (7 - j)) & 1));
-                }
-                dest_index += 16;
+            var out_idx: usize = 0;
+            const zero_char_vec: @Vector(8, u8) = @splat('0');
+            const zero_vec: @Vector(8, u8) = @splat(0);
+            for (source) |byte| {
+                const broadcast: @Vector(8, u8) = @splat(byte);
+                const bits: @Vector(8, u8) = zero_char_vec + @intFromBool((broadcast & mask) != zero_vec);
+                @memcpy(dest[out_idx..][0..8], std.mem.asBytes(&bits));
+                out_idx += 8;
             }
-
-            // Handle remaining byte if any
-            if (i < source.len) {
-                const byte = source[i];
-                inline for (0..8) |j| {
-                    dest[dest_index + j] = '0' + @as(u8, @truncate((byte >> (7 - j)) & 1));
-                }
-                dest_index += 8;
-            }
-
-            return dest[0..dest_index];
+            return dest[0..out_idx];
         }
 
         pub fn decode(dest: []u8, source: []const u8) ![]const u8 {
@@ -1610,6 +1594,21 @@ test "Base.encode/decode base16" {
     }
 }
 
+test "Base bench encode base2" {
+    const time = std.time;
+    const source = "\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !";
+    var dest: [source.len * 8 + 1]u8 = undefined;
+    for (0..10) |_| {
+        const start_time = time.milliTimestamp();
+        for (0..1000000) |_| {
+            _ = MultiBaseCodec.Base2.encode(dest[0..], source);
+        }
+        const end_time = time.milliTimestamp();
+        const elapsed_time = end_time - start_time;
+        std.debug.print("Elapsed time: {} ms\n", .{elapsed_time});
+    }
+}
+
 test "Base bench encode base32" {
     const time = std.time;
     const source = "\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !";
@@ -1618,6 +1617,21 @@ test "Base bench encode base32" {
         const start_time = time.milliTimestamp();
         for (0..1000000) |_| {
             _ = MultiBaseCodec.Base32PadLower.encode(dest[0..], source);
+        }
+        const end_time = time.milliTimestamp();
+        const elapsed_time = end_time - start_time;
+        std.debug.print("Elapsed time: {} ms\n", .{elapsed_time});
+    }
+}
+
+test "Base bench encode base64" {
+    const time = std.time;
+    const source = "\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !";
+    var dest: [source.len * 8 + 1]u8 = undefined;
+    for (0..10) |_| {
+        const start_time = time.milliTimestamp();
+        for (0..1000000) |_| {
+            _ = MultiBaseCodec.Base64Pad.encode(dest[0..], source);
         }
         const end_time = time.milliTimestamp();
         const elapsed_time = end_time - start_time;
