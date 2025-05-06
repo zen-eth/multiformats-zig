@@ -400,10 +400,10 @@ pub const Multiaddr = struct {
         // Skip path check for Unix sockets
         if (!std.mem.eql(u8, uri.scheme, "unix") and
             (uri.user != null or
-            uri.password != null or
-            (path.len > 0 and !std.mem.eql(u8, path, "/")) or
-            uri.query != null or
-            uri.fragment != null))
+                uri.password != null or
+                (path.len > 0 and !std.mem.eql(u8, path, "/")) or
+                uri.query != null or
+                uri.fragment != null))
         {
             return FromUrlError.InformationLoss;
         }
