@@ -26,5 +26,12 @@ zig fetch --save https://github.com/zen-eth/multiformats-zig/archive/main.tar.gz
 const multiformats = @import("multiformats-zig");
 ```
 
+## Benchmark
+```bash
+git clone --recurse-submodules git@github.com:zen-eth/multiformats-zig.git
+cd multiformats-zig
+zig build bench --release=fast -Dcode=7
+```
+
 ## License
 MIT

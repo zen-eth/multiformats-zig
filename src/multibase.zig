@@ -1594,51 +1594,6 @@ test "Base.encode/decode base16" {
     }
 }
 
-test "Base bench encode base2" {
-    const time = std.time;
-    const source = "\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !";
-    var dest: [source.len * 8 + 1]u8 = undefined;
-    for (0..10) |_| {
-        const start_time = time.milliTimestamp();
-        for (0..1000000) |_| {
-            _ = MultiBaseCodec.Base2.encode(dest[0..], source);
-        }
-        const end_time = time.milliTimestamp();
-        const elapsed_time = end_time - start_time;
-        std.debug.print("Elapsed time: {} ms\n", .{elapsed_time});
-    }
-}
-
-test "Base bench encode base32" {
-    const time = std.time;
-    const source = "\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !";
-    var dest: [source.len * 8 + 1]u8 = undefined;
-    for (0..10) |_| {
-        const start_time = time.milliTimestamp();
-        for (0..1000000) |_| {
-            _ = MultiBaseCodec.Base32PadLower.encode(dest[0..], source);
-        }
-        const end_time = time.milliTimestamp();
-        const elapsed_time = end_time - start_time;
-        std.debug.print("Elapsed time: {} ms\n", .{elapsed_time});
-    }
-}
-
-test "Base bench encode base64" {
-    const time = std.time;
-    const source = "\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !";
-    var dest: [source.len * 8 + 1]u8 = undefined;
-    for (0..10) |_| {
-        const start_time = time.milliTimestamp();
-        for (0..1000000) |_| {
-            _ = MultiBaseCodec.Base64Pad.encode(dest[0..], source);
-        }
-        const end_time = time.milliTimestamp();
-        const elapsed_time = end_time - start_time;
-        std.debug.print("Elapsed time: {} ms\n", .{elapsed_time});
-    }
-}
-
 test "Base.encode base32 lower pad" {
     const testing = std.testing;
     var dest: [257]u8 = undefined;
@@ -2675,32 +2630,4 @@ fn loadTestData(allocator: std.mem.Allocator, filePath: []const u8) ![]const u8 
     return content;
 }
 
-test "Base bench encode base36" {
-    const time = std.time;
-    const source = "\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !";
-    var dest: [source.len * 8 + 1]u8 = undefined;
-    for (0..10) |_| {
-        const start_time = time.milliTimestamp();
-        for (0..1000000) |_| {
-            _ = MultiBaseCodec.Base36Lower.encode(dest[0..], source);
-        }
-        const end_time = time.milliTimestamp();
-        const elapsed_time = end_time - start_time;
-        std.debug.print("Elapsed time: {} ms\n", .{elapsed_time});
-    }
-}
 
-test "Base bench encode base58" {
-    const time = std.time;
-    const source = "\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !";
-    var dest: [source.len * 8 + 1]u8 = undefined;
-    for (0..10) |_| {
-        const start_time = time.milliTimestamp();
-        for (0..1000000) |_| {
-            _ = MultiBaseCodec.Base58Btc.encode(dest[0..], source);
-        }
-        const end_time = time.milliTimestamp();
-        const elapsed_time = end_time - start_time;
-        std.debug.print("Elapsed time: {} ms\n", .{elapsed_time});
-    }
-}
