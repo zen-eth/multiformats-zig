@@ -505,19 +505,8 @@ pub const MultiBaseCodec = enum {
             defer encode_allocator.free(num);
             var num_len: usize = 0;
 
-            // Count leading zeros using SIMD
-            const Vec = @Vector(16, u8);
-            const zeros: Vec = @splat(0);
+            // Count leading zeros
             var leading_zeros: usize = 0;
-
-            while (leading_zeros + 16 <= source.len) {
-                const chunk = @as(Vec, source[leading_zeros..][0..16].*);
-                const is_zero = chunk == zeros;
-                const zero_count = @popCount(@as(u16, @bitCast(is_zero)));
-                if (zero_count != 16) break;
-                leading_zeros += 16;
-            }
-
             while (leading_zeros < source.len and source[leading_zeros] == 0) {
                 leading_zeros += 1;
             }
@@ -526,18 +515,33 @@ pub const MultiBaseCodec = enum {
             dest_index += leading_zeros;
 
             // Convert bytes to decimal
-            for (source) |byte| {
-                var carry: u16 = byte;
+            const num_10: u32 = 10;
+            const num_256: u32 = 256;
+            for (0..source.len) |i| {
+                var carry: u32 = source[i];
                 var j: usize = 0;
                 while (j < num_len or carry > 0) : (j += 1) {
                     if (j < num_len) {
-                        carry += @as(u16, num[j]) << 8;
+                        carry += @as(u32,num[j]) * num_256;
                     }
-                    num[j] = @truncate(carry % 10);
-                    carry /= 10;
+                    num[j] = @intCast(carry % num_10);
+                    carry /= num_10;
                 }
                 num_len = j;
             }
+
+            // for (source) |byte| {
+            //     var carry: u16 = byte;
+            //     var j: usize = 0;
+            //     while (j < num_len or carry > 0) : (j += 1) {
+            //         if (j < num_len) {
+            //             carry += @as(u16, num[j]) << 8;
+            //         }
+            //         num[j] = @truncate(carry % 10);
+            //         carry /= 10;
+            //     }
+            //     num_len = j;
+            // }
 
             // Convert to ASCII and reverse
             var i: usize = num_len;
@@ -843,18 +847,7 @@ pub const MultiBaseCodec = enum {
             defer encode_allocator.free(num);
             var num_len: usize = 0;
 
-            // Count leading zeros using SIMD
-            const zeros: Vec = @splat(0);
             var leading_zeros: usize = 0;
-
-            while (leading_zeros + 16 <= source.len) {
-                const chunk = @as(Vec, source[leading_zeros..][0..16].*);
-                const is_zero = chunk == zeros;
-                const zero_count = @popCount(@as(u16, @bitCast(is_zero)));
-                if (zero_count != 16) break;
-                leading_zeros += 16;
-            }
-
             while (leading_zeros < source.len and source[leading_zeros] == 0) {
                 leading_zeros += 1;
             }
@@ -863,15 +856,18 @@ pub const MultiBaseCodec = enum {
             dest_index += leading_zeros;
 
             // Convert bytes to base36
-            for (source) |byte| {
-                var carry: u16 = byte;
+            const num_36: u32 = 36;
+            const num_256: u32 = 256;
+            // Convert bytes to base58
+            for (0..source.len) |i| {
+                var carry: u32 = source[i];
                 var j: usize = 0;
                 while (j < num_len or carry > 0) : (j += 1) {
                     if (j < num_len) {
-                        carry += @as(u16, num[j]) << 8;
+                        carry += @as(u32,num[j]) * num_256;
                     }
-                    num[j] = @truncate(carry % 36);
-                    carry /= 36;
+                    num[j] = @intCast(carry % num_36);
+                    carry /= num_36;
                 }
                 num_len = j;
             }
@@ -1035,18 +1031,7 @@ pub const MultiBaseCodec = enum {
             defer encode_allocator.free(num);
             var num_len: usize = 0;
 
-            // Count leading zeros using SIMD
-            const zeros: Vec = @splat(0);
             var leading_zeros: usize = 0;
-
-            while (leading_zeros + 16 <= source.len) {
-                const chunk = @as(Vec, source[leading_zeros..][0..16].*);
-                const is_zero = chunk == zeros;
-                const zero_count = @popCount(@as(u16, @bitCast(is_zero)));
-                if (zero_count != 16) break;
-                leading_zeros += 16;
-            }
-
             while (leading_zeros < source.len and source[leading_zeros] == 0) {
                 leading_zeros += 1;
             }
@@ -1054,16 +1039,18 @@ pub const MultiBaseCodec = enum {
             @memset(dest[0..leading_zeros], ALPHABET_BTC[0]);
             dest_index += leading_zeros;
 
+            const b58: u32 = 58;
+            const num_256: u32 = 256;
             // Convert bytes to base58
-            for (source) |byte| {
-                var carry: u16 = byte;
+            for (0..source.len) |i| {
+                var carry: u32 = source[i];
                 var j: usize = 0;
                 while (j < num_len or carry > 0) : (j += 1) {
                     if (j < num_len) {
-                        carry += @as(u16, num[j]) << 8;
+                        carry += @as(u32,num[j]) * num_256;
                     }
-                    num[j] = @truncate(carry % 58);
-                    carry /= 58;
+                    num[j] = @intCast(carry % b58);
+                    carry /= b58;
                 }
                 num_len = j;
             }
