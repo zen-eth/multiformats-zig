@@ -522,7 +522,7 @@ pub const MultiBaseCodec = enum {
                 var j: usize = 0;
                 while (j < num_len or carry > 0) : (j += 1) {
                     if (j < num_len) {
-                        carry += @as(u32,num[j]) * num_256;
+                        carry += @as(u32, num[j]) * num_256;
                     }
                     num[j] = @intCast(carry % num_10);
                     carry /= num_10;
@@ -864,7 +864,7 @@ pub const MultiBaseCodec = enum {
                 var j: usize = 0;
                 while (j < num_len or carry > 0) : (j += 1) {
                     if (j < num_len) {
-                        carry += @as(u32,num[j]) * num_256;
+                        carry += @as(u32, num[j]) * num_256;
                     }
                     num[j] = @intCast(carry % num_36);
                     carry /= num_36;
@@ -1047,7 +1047,7 @@ pub const MultiBaseCodec = enum {
                 var j: usize = 0;
                 while (j < num_len or carry > 0) : (j += 1) {
                     if (j < num_len) {
-                        carry += @as(u32,num[j]) * num_256;
+                        carry += @as(u32, num[j]) * num_256;
                     }
                     num[j] = @intCast(carry % b58);
                     carry /= b58;
