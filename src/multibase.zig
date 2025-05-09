@@ -325,39 +325,23 @@ pub const MultiBaseCodec = enum {
     };
 
     pub const Base2Impl = struct {
+        const alphabet_chars = "01".*;
+        const mask = @Vector(8, u8){ 0x80, 0x40, 0x20, 0x10, 0x08, 0x04, 0x02, 0x01 };
         const Vec = @Vector(16, u8);
         const ascii_zero: Vec = @splat('0');
         const ascii_one: Vec = @splat('1');
 
         pub fn encode(dest: []u8, source: []const u8) []const u8 {
-            var dest_index: usize = 0;
-            var i: usize = 0;
-
-            // Process 2 bytes at once using unrolled loops
-            while (i + 2 <= source.len) : (i += 2) {
-                const value = @as(u16, source[i]) << 8 | source[i + 1];
-
-                // Unrolled loop for first byte
-                inline for (0..8) |j| {
-                    dest[dest_index + j] = '0' + @as(u8, @truncate((value >> (15 - j)) & 1));
-                }
-                // Unrolled loop for second byte
-                inline for (0..8) |j| {
-                    dest[dest_index + j + 8] = '0' + @as(u8, @truncate((value >> (7 - j)) & 1));
-                }
-                dest_index += 16;
+            var out_idx: usize = 0;
+            const zero_char_vec: @Vector(8, u8) = @splat('0');
+            const zero_vec: @Vector(8, u8) = @splat(0);
+            for (source) |byte| {
+                const broadcast: @Vector(8, u8) = @splat(byte);
+                const bits: @Vector(8, u8) = zero_char_vec + @intFromBool((broadcast & mask) != zero_vec);
+                @memcpy(dest[out_idx..][0..8], std.mem.asBytes(&bits));
+                out_idx += 8;
             }
-
-            // Handle remaining byte if any
-            if (i < source.len) {
-                const byte = source[i];
-                inline for (0..8) |j| {
-                    dest[dest_index + j] = '0' + @as(u8, @truncate((byte >> (7 - j)) & 1));
-                }
-                dest_index += 8;
-            }
-
-            return dest[0..dest_index];
+            return dest[0..out_idx];
         }
 
         pub fn decode(dest: []u8, source: []const u8) ![]const u8 {
@@ -513,22 +497,16 @@ pub const MultiBaseCodec = enum {
             }
 
             var dest_index: usize = 0;
-            var num: [1024]u8 align(16) = undefined;
+            var encode_allocator = std.heap.page_allocator;
+            var num: []u8 = encode_allocator.alloc(u8, source.len * 242 / 100 + 1) catch |err| {
+                std.debug.print("Allocation error: {}\n", .{err});
+                return dest[0..1];
+            };
+            defer encode_allocator.free(num);
             var num_len: usize = 0;
 
-            // Count leading zeros using SIMD
-            const Vec = @Vector(16, u8);
-            const zeros: Vec = @splat(0);
+            // Count leading zeros
             var leading_zeros: usize = 0;
-
-            while (leading_zeros + 16 <= source.len) {
-                const chunk = @as(Vec, source[leading_zeros..][0..16].*);
-                const is_zero = chunk == zeros;
-                const zero_count = @popCount(@as(u16, @bitCast(is_zero)));
-                if (zero_count != 16) break;
-                leading_zeros += 16;
-            }
-
             while (leading_zeros < source.len and source[leading_zeros] == 0) {
                 leading_zeros += 1;
             }
@@ -537,18 +515,33 @@ pub const MultiBaseCodec = enum {
             dest_index += leading_zeros;
 
             // Convert bytes to decimal
-            for (source) |byte| {
-                var carry: u16 = byte;
+            const num_10: u32 = 10;
+            const num_256: u32 = 256;
+            for (0..source.len) |i| {
+                var carry: u32 = source[i];
                 var j: usize = 0;
                 while (j < num_len or carry > 0) : (j += 1) {
                     if (j < num_len) {
-                        carry += @as(u16, num[j]) << 8;
+                        carry += @as(u32, num[j]) * num_256;
                     }
-                    num[j] = @truncate(carry % 10);
-                    carry /= 10;
+                    num[j] = @intCast(carry % num_10);
+                    carry /= num_10;
                 }
                 num_len = j;
             }
+
+            // for (source) |byte| {
+            //     var carry: u16 = byte;
+            //     var j: usize = 0;
+            //     while (j < num_len or carry > 0) : (j += 1) {
+            //         if (j < num_len) {
+            //             carry += @as(u16, num[j]) << 8;
+            //         }
+            //         num[j] = @truncate(carry % 10);
+            //         carry /= 10;
+            //     }
+            //     num_len = j;
+            // }
 
             // Convert to ASCII and reverse
             var i: usize = num_len;
@@ -564,7 +557,12 @@ pub const MultiBaseCodec = enum {
             if (source.len == 0) return dest[0..0];
 
             var dest_index: usize = 0;
-            var num: [1024]u8 align(16) = undefined;
+            var encode_allocator = std.heap.page_allocator;
+            var num: []u8 = encode_allocator.alloc(u8, source.len * 43 / 100 + 1) catch |err| {
+                std.debug.print("Allocation error: {}\n", .{err});
+                return dest[0..1];
+            };
+            defer encode_allocator.free(num);
             var num_len: usize = 0;
 
             // Count leading zeros using SIMD
@@ -744,57 +742,45 @@ pub const MultiBaseCodec = enum {
         }
 
         pub fn encode(dest: []u8, source: []const u8, alphabet: []const u8, pad: bool) []const u8 {
-            var dest_index: usize = 0;
-            var bits: u16 = 0;
-            var bit_count: u4 = 0;
-
-            // SIMD optimization for 8-byte chunks
-            const Vec = @Vector(8, u8);
-            const chunk_size = 8;
-            const full_chunks = source.len / chunk_size;
-
-            var i: usize = 0;
-            while (i < full_chunks) : (i += 1) {
-                const vec = @as(Vec, source[i * chunk_size ..][0..chunk_size].*);
-                // Process 8 bytes at once using SIMD
-                inline for (0..8) |j| {
-                    const byte = vec[j];
-                    bits = (bits << 8) | byte;
-                    bit_count += 8;
-                    while (bit_count >= 5) {
-                        bit_count -= 5;
-                        const index = (bits >> bit_count) & 0x1F;
-                        dest[dest_index] = alphabet[index];
-                        dest_index += 1;
-                    }
+            var idx: usize = 0;
+            var out_idx: usize = 0;
+            // read 40 bits every loop
+            var carry = [_]u8{0} ** 8;
+            while (idx + 5 <= source.len) : (idx += 5) {
+                // [0x01, 0x02, 0x03, 0x04, 0x05] => (0x01 << 32) (0x02 << 24) | (0x03 << 16) | (0x04 << 8) | 0x05
+                @memcpy(carry[3..], source[idx..][0..5]);
+                const bits = std.mem.readInt(u64, carry[0..], .big);
+                inline for (0..8) |i| {
+                    dest[out_idx + (7 - i)] = alphabet[(bits >> (i * 5)) & 0x1f];
                 }
+                out_idx += 8;
             }
 
-            // Handle remaining bytes
-            for (source[full_chunks * chunk_size ..]) |byte| {
+            // handle remaining bytes, max 4 byte
+            var bits: u16 = 0;
+            var bit_count: u4 = 0;
+            for (source[idx..]) |byte| {
                 bits = (bits << 8) | byte;
                 bit_count += 8;
                 while (bit_count >= 5) {
                     bit_count -= 5;
                     const index = (bits >> bit_count) & 0x1F;
-                    dest[dest_index] = alphabet[index];
-                    dest_index += 1;
+                    dest[out_idx] = alphabet[index];
+                    out_idx += 1;
                 }
             }
-
             if (bit_count > 0) {
                 const index = (bits << (5 - bit_count)) & 0x1F;
-                dest[dest_index] = alphabet[index];
-                dest_index += 1;
+                dest[out_idx] = alphabet[index];
+                out_idx += 1;
             }
-
             if (pad) {
-                const padding = (8 - dest_index % 8) % 8;
-                @memset(dest[dest_index..][0..padding], PADDING);
-                dest_index += padding;
+                const padding = (8 - out_idx % 8) % 8;
+                @memset(dest[out_idx..][0..padding], PADDING);
+                out_idx += padding;
             }
 
-            return dest[0..dest_index];
+            return dest[0..out_idx];
         }
 
         pub fn decode(dest: []u8, source: []const u8, decode_table: *const [256]u8) ParseError![]const u8 {
@@ -853,21 +839,15 @@ pub const MultiBaseCodec = enum {
             }
 
             var dest_index: usize = 0;
-            var num: [1024]u8 align(16) = undefined;
+            var encode_allocator = std.heap.page_allocator;
+            var num: []u8 = encode_allocator.alloc(u8, source.len * 156 / 100 + 1) catch |err| {
+                std.debug.print("Allocation error: {}\n", .{err});
+                return dest[0..1];
+            };
+            defer encode_allocator.free(num);
             var num_len: usize = 0;
 
-            // Count leading zeros using SIMD
-            const zeros: Vec = @splat(0);
             var leading_zeros: usize = 0;
-
-            while (leading_zeros + 16 <= source.len) {
-                const chunk = @as(Vec, source[leading_zeros..][0..16].*);
-                const is_zero = chunk == zeros;
-                const zero_count = @popCount(@as(u16, @bitCast(is_zero)));
-                if (zero_count != 16) break;
-                leading_zeros += 16;
-            }
-
             while (leading_zeros < source.len and source[leading_zeros] == 0) {
                 leading_zeros += 1;
             }
@@ -876,15 +856,18 @@ pub const MultiBaseCodec = enum {
             dest_index += leading_zeros;
 
             // Convert bytes to base36
-            for (source) |byte| {
-                var carry: u16 = byte;
+            const num_36: u32 = 36;
+            const num_256: u32 = 256;
+            // Convert bytes to base58
+            for (0..source.len) |i| {
+                var carry: u32 = source[i];
                 var j: usize = 0;
                 while (j < num_len or carry > 0) : (j += 1) {
                     if (j < num_len) {
-                        carry += @as(u16, num[j]) << 8;
+                        carry += @as(u32, num[j]) * num_256;
                     }
-                    num[j] = @truncate(carry % 36);
-                    carry /= 36;
+                    num[j] = @intCast(carry % num_36);
+                    carry /= num_36;
                 }
                 num_len = j;
             }
@@ -905,7 +888,13 @@ pub const MultiBaseCodec = enum {
             }
 
             var dest_index: usize = 0;
-            var num: [1024]u8 align(16) = undefined;
+            // log(256)/log(36) ≈ 1.547 => 156%
+            var encode_allocator = std.heap.page_allocator;
+            var num: []u8 = encode_allocator.alloc(u8, source.len * 156 / 100 + 1) catch |err| {
+                std.debug.print("Allocation error: {}\n", .{err});
+                return dest[0..1];
+            };
+            defer encode_allocator.free(num);
             var num_len: usize = 0;
 
             // Count leading zeros using SIMD
@@ -959,7 +948,12 @@ pub const MultiBaseCodec = enum {
                 DECODE_TABLE_UPPER;
 
             var dest_index: usize = 0;
-            var num: [1024]u8 align(16) = undefined;
+            var encode_allocator = std.heap.page_allocator;
+            var num: []u8 = encode_allocator.alloc(u8, source.len * 66 / 100 + 1) catch |err| {
+                std.debug.print("Allocation error: {}\n", .{err});
+                return dest[0..1];
+            };
+            defer encode_allocator.free(num);
             var num_len: usize = 0;
 
             // Count leading zeros
@@ -1029,21 +1023,15 @@ pub const MultiBaseCodec = enum {
             }
 
             var dest_index: usize = 0;
-            var num: [1024]u8 align(16) = undefined;
+            var encode_allocator = std.heap.page_allocator;
+            var num: []u8 = encode_allocator.alloc(u8, source.len * 138 / 100 + 1) catch |err| {
+                std.debug.print("Allocation error: {}\n", .{err});
+                return dest[0..1];
+            };
+            defer encode_allocator.free(num);
             var num_len: usize = 0;
 
-            // Count leading zeros using SIMD
-            const zeros: Vec = @splat(0);
             var leading_zeros: usize = 0;
-
-            while (leading_zeros + 16 <= source.len) {
-                const chunk = @as(Vec, source[leading_zeros..][0..16].*);
-                const is_zero = chunk == zeros;
-                const zero_count = @popCount(@as(u16, @bitCast(is_zero)));
-                if (zero_count != 16) break;
-                leading_zeros += 16;
-            }
-
             while (leading_zeros < source.len and source[leading_zeros] == 0) {
                 leading_zeros += 1;
             }
@@ -1051,16 +1039,18 @@ pub const MultiBaseCodec = enum {
             @memset(dest[0..leading_zeros], ALPHABET_BTC[0]);
             dest_index += leading_zeros;
 
+            const b58: u32 = 58;
+            const num_256: u32 = 256;
             // Convert bytes to base58
-            for (source) |byte| {
-                var carry: u16 = byte;
+            for (0..source.len) |i| {
+                var carry: u32 = source[i];
                 var j: usize = 0;
                 while (j < num_len or carry > 0) : (j += 1) {
                     if (j < num_len) {
-                        carry += @as(u16, num[j]) << 8;
+                        carry += @as(u32, num[j]) * num_256;
                     }
-                    num[j] = @truncate(carry % 58);
-                    carry /= 58;
+                    num[j] = @intCast(carry % b58);
+                    carry /= b58;
                 }
                 num_len = j;
             }
@@ -1081,7 +1071,12 @@ pub const MultiBaseCodec = enum {
             }
 
             var dest_index: usize = 0;
-            var num: [1024]u8 align(16) = undefined;
+            var encode_allocator = std.heap.page_allocator;
+            var num: []u8 = encode_allocator.alloc(u8, source.len * 138 / 100 + 1) catch |err| {
+                std.debug.print("Allocation error: {}\n", .{err});
+                return dest[0..1];
+            };
+            defer encode_allocator.free(num);
             var num_len: usize = 0;
 
             // Count leading zeros using SIMD
@@ -1130,7 +1125,12 @@ pub const MultiBaseCodec = enum {
             if (source.len == 0) return dest[0..0];
 
             var dest_index: usize = 0;
-            var num: [1024]u8 align(16) = undefined;
+            var encode_allocator = std.heap.page_allocator;
+            var num: []u8 = encode_allocator.alloc(u8, source.len * 733 / 1000 + 1) catch |err| {
+                std.debug.print("Allocation error: {}\n", .{err});
+                return dest[0..1];
+            };
+            defer encode_allocator.free(num);
             var num_len: usize = 0;
 
             // Count leading zeros
@@ -1172,7 +1172,12 @@ pub const MultiBaseCodec = enum {
             if (source.len == 0) return dest[0..0];
 
             var dest_index: usize = 0;
-            var num: [1024]u8 align(16) = undefined;
+            var encode_allocator = std.heap.page_allocator;
+            var num: []u8 = encode_allocator.alloc(u8, source.len * 733 / 1000 + 1) catch |err| {
+                std.debug.print("Allocation error: {}\n", .{err});
+                return dest[0..1];
+            };
+            defer encode_allocator.free(num);
             var num_len: usize = 0;
 
             // Count leading zeros
@@ -1576,9 +1581,16 @@ test "Base.encode/decode base16" {
     }
 }
 
+test "Base.encode base32 lower pad" {
+    const testing = std.testing;
+    var dest: [257]u8 = undefined;
+    const source = "\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !\x00\x00yes mani !";
+    const encoded = MultiBaseCodec.Base32PadLower.encode(dest[0..], source);
+    try testing.expectEqualStrings("aaahszltebwwc3tjeaqqaadzmvzsa3lbnzusaiiaab4wk4zanvqw42jaeeaaa6lfomqg2yloneqccaaapfsxgidnmfxgsibbaaahszltebwwc3tjeaqqaadzmvzsa3lbnzusaiiaab4wk4zanvqw42jaeeaaa6lfomqg2yloneqccaaapfsxgidnmfxgsibbaaahszltebwwc3tjeaqqaadzmvzsa3lbnzusaiiaab4wk4zanvqw42jaee======", encoded[1..]);
+}
+
 test "Base.encode/decode base32" {
     const testing = std.testing;
-
     // Test Base32Lower
     {
         var dest: [256]u8 = undefined;
@@ -2486,4 +2498,121 @@ test "Base36 and Base58 size calculations" {
     const base58_dec_size2 = MultiBaseCodec.Base58Btc.decodedLenBySize(encoded2.len);
     const base58_dec_size = MultiBaseCodec.Base58Btc.decodedLen(encoded2);
     try testing.expectEqual(base58_dec_size, base58_dec_size2);
+}
+
+test "Base36Lower encode large data" {
+    const testing = std.testing;
+    const allocator = std.heap.page_allocator;
+    const large_data = try loadTestData(allocator, "./test/data/encode_data");
+    defer allocator.free(large_data);
+    const encode_comparision_data = try loadTestData(allocator, "./test/data/encoded_result_base36_lower");
+    defer allocator.free(encode_comparision_data);
+
+    var dest: [17000]u8 = undefined;
+    const encode_result = MultiBaseCodec.Base36Lower.encode(dest[0..], large_data);
+    try testing.expectEqual(encode_comparision_data.len, encode_result.len);
+    try testing.expectEqualStrings(encode_comparision_data, encode_result);
+}
+
+test "Base36Upper encode large data" {
+    const testing = std.testing;
+    const allocator = std.heap.page_allocator;
+    const large_data = try loadTestData(allocator, "./test/data/encode_data");
+    defer allocator.free(large_data);
+    const encode_comparision_data = try loadTestData(allocator, "./test/data/encoded_result_base36_upper");
+    defer allocator.free(encode_comparision_data);
+
+    var dest: [17000]u8 = undefined;
+    const encode_result = MultiBaseCodec.Base36Upper.encode(dest[0..], large_data);
+    try testing.expectEqual(encode_comparision_data.len, encode_result.len);
+    try testing.expectEqualStrings(encode_comparision_data, encode_result);
+}
+
+test "Base36Lower decode large data" {
+    const testing = std.testing;
+    const allocator = std.heap.page_allocator;
+    const decode_comparision_data = try loadTestData(allocator, "./test/data/encode_data");
+    defer allocator.free(decode_comparision_data);
+    const decode_data = try loadTestData(allocator, "./test/data/encoded_result_base36_lower");
+    defer allocator.free(decode_data);
+
+    var dest: [17000]u8 = undefined;
+    const decode_result = try MultiBaseCodec.Base36Lower.decode(dest[0..], decode_data[1..]);
+    try testing.expectEqualStrings(decode_comparision_data, decode_result);
+}
+
+test "Base36Upper decode large data" {
+    const testing = std.testing;
+    const allocator = std.heap.page_allocator;
+    const decode_comparision_data = try loadTestData(allocator, "./test/data/encode_data");
+    defer allocator.free(decode_comparision_data);
+    const decode_data = try loadTestData(allocator, "./test/data/encoded_result_base36_upper");
+    defer allocator.free(decode_data);
+
+    var dest: [17500]u8 = undefined;
+    const decode_result = try MultiBaseCodec.Base36Upper.decode(dest[0..], decode_data[1..]);
+    try testing.expectEqualStrings(decode_comparision_data, decode_result);
+}
+
+test "Base58BTC encode large data" {
+    const testing = std.testing;
+    const allocator = std.heap.page_allocator;
+    const large_data = try loadTestData(allocator, "./test/data/encode_data");
+    defer allocator.free(large_data);
+    const encode_comparision_data = try loadTestData(allocator, "./test/data/encoded_result_base58_btc");
+    defer allocator.free(encode_comparision_data);
+
+    var dest: [17000]u8 = undefined;
+    const encode_result = MultiBaseCodec.Base58Btc.encode(dest[0..], large_data);
+    try testing.expectEqual(encode_comparision_data.len, encode_result.len);
+    try testing.expectEqualStrings(encode_comparision_data, encode_result);
+}
+
+test "Base58BTC decode large data" {
+    const testing = std.testing;
+    const allocator = std.heap.page_allocator;
+    const decode_comparision_data = try loadTestData(allocator, "./test/data/encode_data");
+    defer allocator.free(decode_comparision_data);
+    const decode_data = try loadTestData(allocator, "./test/data/encoded_result_base58_btc");
+    defer allocator.free(decode_data);
+
+    var dest: [17000]u8 = undefined;
+    const decode_result = try MultiBaseCodec.Base58Btc.decode(dest[0..], decode_data[1..]);
+    try testing.expectEqualStrings(decode_comparision_data, decode_result);
+}
+test "Base58Flickr encode large data" {
+    const testing = std.testing;
+    const allocator = std.heap.page_allocator;
+    const large_data = try loadTestData(allocator, "./test/data/encode_data");
+    defer allocator.free(large_data);
+    const encode_comparision_data = try loadTestData(allocator, "./test/data/encoded_result_base58_flickr");
+    defer allocator.free(encode_comparision_data);
+
+    var dest: [17000]u8 = undefined;
+    const encode_result = MultiBaseCodec.Base58Flickr.encode(dest[0..], large_data);
+    try testing.expectEqual(encode_comparision_data.len, encode_result.len);
+    try testing.expectEqualStrings(encode_comparision_data, encode_result);
+}
+
+test "Base58Flickr decode large data" {
+    const testing = std.testing;
+    const allocator = std.heap.page_allocator;
+    const decode_comparision_data = try loadTestData(allocator, "./test/data/encode_data");
+    defer allocator.free(decode_comparision_data);
+    const decode_data = try loadTestData(allocator, "./test/data/encoded_result_base58_flickr");
+    defer allocator.free(decode_data);
+
+    var dest: [17000]u8 = undefined;
+    const decode_result = try MultiBaseCodec.Base58Flickr.decode(dest[0..], decode_data[1..]);
+    try testing.expectEqualStrings(decode_comparision_data, decode_result);
+}
+
+fn loadTestData(allocator: std.mem.Allocator, filePath: []const u8) ![]const u8 {
+    var file = try std.fs.cwd().openFile(filePath, .{ .mode = std.fs.File.OpenMode.read_only });
+    defer file.close();
+    const fileSize = try file.getEndPos();
+    const buffer = try allocator.alloc(u8, fileSize);
+    _ = try file.readAll(buffer);
+    const content: []const u8 = buffer;
+    return content;
 }
