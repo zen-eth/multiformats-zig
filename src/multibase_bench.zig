@@ -32,7 +32,7 @@ const BenchResult = struct {
     avg_time: i128,
     data_len: u64,
     pub fn format(self: @This(), writer: anytype) !void {
-        // 输出格式化的 Benchmark 结果
+        // print formated benchmark result
         try writer.print(
             \\Benchmark {s} Results:
             \\=========================================
