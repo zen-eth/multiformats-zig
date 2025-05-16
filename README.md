@@ -32,6 +32,7 @@ git clone --recurse-submodules git@github.com:zen-eth/multiformats-zig.git
 cd multiformats-zig
 zig build bench --release=fast -Dcode=7
 ```
+tip: The `code` parameter in the command can refer to the declaration in the `MultiBaseCodec.fromCode()` in the source file `src/multibase.zig`.
 
 ## License
 MIT
