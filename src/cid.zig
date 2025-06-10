@@ -267,64 +267,6 @@ pub fn CID(comptime S: usize) type {
             return try Self.readStream(fbs.reader());
         }
 
-        // pub fn decodedLen(cid_str: []const u8) !usize {
-        //     const hash = if (std.mem.indexOf(u8, cid_str, IPFS_DELIMITER)) |index|
-        //         cid_str[index + IPFS_DELIMITER.len ..]
-        //     else
-        //         cid_str;
-        //
-        //     return if (CidVersion.isV0Str(hash))
-        //         MultiBaseCodec.Base58Btc.decodedLen(hash)
-        //     else
-        //         (try MultiBaseCodec.fromCode(hash)).decode(hash);
-        // }
-
-        // pub fn fromString(allocator: Allocator, cid_str: []const u8, buffer: []u8) !Self {
-        //     // Find IPFS delimiter if present
-        //     const hash = if (std.mem.indexOf(u8, cid_str, IPFS_DELIMITER)) |index|
-        //         cid_str[index + IPFS_DELIMITER.len ..]
-        //     else
-        //         cid_str;
-        //
-        //     if (hash.len < 2) return CidError.InputTooShort;
-        //
-        //     // Handle CIDv0 vs CIDv1
-        //     const decoded = if (CidVersion.isV0Str(hash))
-        //         try MultiBaseCodec.Base58Btc.decode(buffer, hash)
-        //     else
-        //         try multibase
-        //
-        //     return try Self.fromBytes(allocator, decoded);
-        // }
-
-        // pub fn fromString(allocator: Allocator, cid_str: []const u8) !Self {
-        //     // Find IPFS delimiter if present
-        //     const hash = if (std.mem.indexOf(u8, cid_str, IPFS_DELIMITER)) |index|
-        //         cid_str[index + IPFS_DELIMITER.len ..]
-        //     else
-        //         cid_str;
-        //
-        //     if (hash.len < 2) return CidError.InputTooShort;
-        //
-        //     // Handle CIDv0 vs CIDv1
-        //     const decoded = if (CidVersion.isV0Str(hash)) blk: {
-        //         const needed_size = MultiBaseCodec.Base58Btc.calcSizeForDecode(hash);
-        //         var dest = try allocator.alloc(u8, needed_size);
-        //         errdefer allocator.free(dest);
-        //
-        //         const result = try MultiBaseCodec.Base58Btc.decode(dest, hash);
-        //         if (result.len < dest.len) {
-        //             dest = try allocator.realloc(dest, result.len);
-        //         }
-        //         break :blk dest[0..result.len];
-        //     } else blk: {
-        //         const decoded_result = try multibase.decode(allocator, hash);
-        //         break :blk decoded_result.data;
-        //     };
-        //
-        //     defer allocator.free(decoded);
-        //     return try Self.fromBytes(allocator, decoded);
-        // }
         pub fn fromString(codec: MultiBaseCodec, dest: []u8, cid_str: []const u8) !Self {
             const decoded = try codec.decode(dest, cid_str);
             return try Self.fromBytes(decoded);
@@ -407,8 +349,8 @@ test CID {
 
     // Test CIDv1
     {
-        const hash = try Multihash(64).wrap(Multicodec.SHA2_256, &[_]u8{0} ** 32);
-        const cid = try CID(64).newV1(Multicodec.RAW, hash);
+        const hash = try Multihash(32).wrap(Multicodec.SHA2_256, &[_]u8{0} ** 32);
+        const cid = try CID(32).newV1(Multicodec.RAW, hash);
         try testing.expectEqual(cid.version, .V1);
         try testing.expectEqual(cid.codec, Multicodec.RAW);
     }
