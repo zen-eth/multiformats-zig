@@ -26,8 +26,8 @@
     // internet connectivity.
     .dependencies = .{
         .peer_id = .{
-            .url = "git+https://github.com/zen-eth/peer-id#209b8d77213a4441173e39cfd7794a9914f9118a",
-            .hash = "peer_id-0.0.0-jlAlYOxdAAAxCHe9mHpN18x2EuUyKA9dVFmFkKt2hLtG",
+            .url = "git+https://github.com/zen-eth/peer-id#3f9be40ec19f5a85298102dde7c0259f064fb3d8",
+            .hash = "peer_id-0.0.0-jlAlYI9cAACWW0w-GZaf3xAuwXNZhOOGKQtm3CvqcdiK",
         },
     },
     .paths = .{
