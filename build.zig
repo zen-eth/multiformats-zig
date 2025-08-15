@@ -4,17 +4,25 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Create the module
-    _ = b.addModule("multiformats-zig", .{
-        .root_source_file = b.path("src/root.zig"),
+    const peerid_dep = b.dependency("peer_id", .{
+        .target = target,
+        .optimize = optimize,
     });
+    const peerid_module = peerid_dep.module("peer-id");
 
-    // Create the library
-    const lib = b.addStaticLibrary(.{
-        .name = "multiformats-zig",
+    // Create the module
+    const root_module = b.addModule("multiformats-zig", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
+    });
+    root_module.addImport("peer-id", peerid_module);
+
+    // Create the library
+    const lib = b.addLibrary(.{
+        .name = "multiformats-zig",
+        .root_module = root_module,
+        .linkage = .static,
     });
 
     b.installArtifact(lib);
@@ -23,7 +31,7 @@ pub fn build(b: *std.Build) void {
 
     // Test setup
     const lib_unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/root.zig"),
+        .root_module = root_module,
         .target = target,
         .optimize = optimize,
     });

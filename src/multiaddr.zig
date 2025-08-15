@@ -1,6 +1,7 @@
 const std = @import("std");
 const testing = std.testing;
 const uvarint = @import("unsigned_varint.zig");
+const PeerId = @import("peer-id").PeerId;
 
 pub const Error = error{
     DataLessThanLen,
@@ -57,6 +58,7 @@ pub const Protocol = union(enum) {
     QuicV1,
     P2pCircuit,
     WebTransport,
+    P2P: PeerId,
 
     pub fn tag(self: Protocol) []const u8 {
         return switch (self) {
@@ -79,6 +81,7 @@ pub const Protocol = union(enum) {
             .QuicV1 => "quic-v1",
             .P2pCircuit => "p2p-circuit",
             .WebTransport => "webtransport",
+            .P2P => "p2p",
         };
     }
 
@@ -182,6 +185,14 @@ pub const Protocol = union(enum) {
             QUIC_V1 => return .{ .proto = .QuicV1, .rest = rest },
             P2P_CIRCUIT => return .{ .proto = .P2pCircuit, .rest = rest },
             WEBTRANSPORT => return .{ .proto = .WebTransport, .rest = rest },
+            P2P => {
+                const size_decoded = try uvarint.decode(usize, rest);
+                const size = size_decoded.value;
+                rest = size_decoded.remaining;
+                if (rest.len < size) return Error.DataLessThanLen;
+                const peer_id = try PeerId.fromBytes(rest[0..size]);
+                return .{ .proto = .{ .P2P = peer_id }, .rest = rest[size..] };
+            },
             else => Error.UnknownProtocolId,
         };
     }
@@ -271,6 +282,13 @@ pub const Protocol = union(enum) {
             .WebTransport => {
                 _ = try uvarint.encodeStream(writer, u32, WEBTRANSPORT);
             },
+            .P2P => |peer_id| {
+                _ = try uvarint.encodeStream(writer, u32, P2P);
+                var bytes_buffer: [128]u8 = undefined;
+                const bytes = try peer_id.toBytes(&bytes_buffer);
+                _ = try uvarint.encodeStream(writer, usize, bytes.len);
+                try writer.writeAll(bytes);
+            },
         }
     }
 };
@@ -330,6 +348,20 @@ pub const Multiaddr = struct {
         try new_ma.bytes.appendSlice(self.bytes.items);
         try new_ma.push(p);
         return new_ma;
+    }
+
+    // Add PeerId if not present at end
+    pub fn withP2p(self: Multiaddr, allocator: std.mem.Allocator, peer_id: PeerId) !Multiaddr {
+        var iter = self.iterator();
+        if (try iter.last()) |last| {
+            if (last == .P2P) {
+                if (last.P2P.eql(&peer_id)) {
+                    return self;
+                }
+                return error.DifferentPeerId;
+            }
+        }
+        return try self.with(allocator, .{ .P2P = peer_id });
     }
 
     pub fn len(self: Multiaddr) usize {
@@ -446,7 +478,6 @@ pub const Multiaddr = struct {
     }
 
     fn handleWebsocketUrl(ma: *Multiaddr, uri: std.Uri) !void {
-        // 处理主机部分
         if (uri.host) |host_component| {
             const host = switch (host_component) {
                 .raw => |raw| raw,
@@ -466,11 +497,9 @@ pub const Multiaddr = struct {
             }
         }
 
-        // 处理端口
         const port = uri.port orelse if (std.mem.eql(u8, uri.scheme, "ws")) @as(u16, 80) else @as(u16, 443);
         try ma.push(.{ .Tcp = port });
 
-        // 添加协议
         if (std.mem.eql(u8, uri.scheme, "ws")) {
             try ma.push(.Ws);
         } else {
@@ -479,7 +508,6 @@ pub const Multiaddr = struct {
     }
 
     fn handleHttpUrl(ma: *Multiaddr, uri: std.Uri) !void {
-        // 类似websocket的处理逻辑
         if (uri.host) |host_component| {
             const host = switch (host_component) {
                 .raw => |raw| raw,
@@ -580,6 +608,13 @@ pub const Multiaddr = struct {
                 .QuicV1 => try result.writer().print("/quic-v1", .{}),
                 .P2pCircuit => try result.writer().print("/p2p-circuit", .{}),
                 .WebTransport => try result.writer().print("/webtransport", .{}),
+                .P2P => |peer_id| {
+                    const peerid_len = peer_id.toBase58Len();
+                    const buffer = try allocator.alloc(u8, peerid_len);
+                    defer allocator.free(buffer);
+                    const bytes = try peer_id.toBase58(buffer);
+                    try result.writer().print("/p2p/{s}", .{bytes});
+                },
             }
             rest_bytes = decoded.rest;
         }
@@ -598,14 +633,14 @@ pub const Multiaddr = struct {
         while (parts.next()) |part| {
             if (part.len == 0) continue;
 
-            const proto = try parseProtocol(&parts, part);
+            const proto = try parseProtocol(allocator, &parts, part);
             try ma.push(proto);
         }
 
         return ma;
     }
 
-    fn parseProtocol(parts: *std.mem.SplitIterator(u8, .scalar), proto_name: []const u8) !Protocol {
+    fn parseProtocol(allocator: std.mem.Allocator, parts: *std.mem.SplitIterator(u8, .scalar), proto_name: []const u8) !Protocol {
         return switch (std.meta.stringToEnum(enum { ip4, tcp, udp, dns, dns4, dns6, http, https, ws, wss, p2p, unix }, proto_name) orelse return Error.UnknownProtocolString) {
             .ip4 => blk: {
                 const addr_str = parts.next() orelse return Error.InvalidProtocolString;
@@ -620,6 +655,11 @@ pub const Multiaddr = struct {
                     Protocol{ .Tcp = port }
                 else
                     Protocol{ .Udp = port };
+            },
+            .p2p => blk: {
+                const peer_id_str = parts.next() orelse return Error.InvalidProtocolString;
+                const peer_id = try PeerId.fromString(allocator, peer_id_str);
+                break :blk Protocol{ .P2P = peer_id };
             },
             // Add other protocol parsing as needed
             else => Error.UnknownProtocolString,
@@ -714,6 +754,7 @@ test "multiaddr from string" {
         "/ip4/127.0.0.1/tcp/8080",
         "/ip4/127.0.0.1",
         "/tcp/8080",
+        "/ip4/198.51.100.0/tcp/4242/p2p/QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N",
     };
 
     inline for (cases) |case| {
@@ -781,19 +822,20 @@ pub const ProtocolIterator = struct {
         self.bytes = decoded.rest;
         return decoded.proto;
     }
-};
 
-// Add PeerId if not present at end
-// pub fn withP2p(self: Multiaddr, peer_id: PeerId) !Multiaddr {
-//     var iter = self.iterator();
-//     while (try iter.next()) |p| {
-//         if (p == .P2p) {
-//             if (p.P2p == peer_id) return self;
-//             return error.DifferentPeerId;
-//         }
-//     }
-//     return try self.with(.{ .P2p = peer_id });
-// }
+    pub fn last(self: *ProtocolIterator) !?Protocol {
+        if (self.bytes.len == 0) return null;
+
+        // Find the last protocol by iterating to the end
+        var last_proto: ?Protocol = null;
+        while (self.bytes.len > 0) {
+            const decoded = try Protocol.fromBytes(self.bytes);
+            last_proto = decoded.proto;
+            self.bytes = decoded.rest;
+        }
+        return last_proto;
+    }
+};
 
 test "multiaddr iterator" {
     var ma = Multiaddr.init(testing.allocator);
@@ -1148,5 +1190,44 @@ test "multiaddr protocol - p2p-circuit and webtransport" {
         const str = try ma.toString(testing.allocator);
         defer testing.allocator.free(str);
         try testing.expectEqualStrings("/webtransport", str);
+    }
+}
+
+test "multiaddr protocol p2p" {
+    // Test P2P with PeerId
+    {
+        var ma = Multiaddr.init(testing.allocator);
+        defer ma.deinit();
+        const peer_id = try PeerId.fromString(testing.allocator, "QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N");
+        try ma.push(.{ .P2P = peer_id });
+        const str = try ma.toString(testing.allocator);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("/p2p/QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N", str);
+    }
+
+    // Test P2P with different PeerId
+    {
+        var ma = Multiaddr.init(testing.allocator);
+        defer ma.deinit();
+        const peer_id1 = try PeerId.fromString(testing.allocator, "QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N");
+        const peer_id2 = try PeerId.fromString(testing.allocator, "QmZzZSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N");
+        try ma.push(.{ .P2P = peer_id1 });
+        try testing.expectError(error.DifferentPeerId, ma.withP2p(testing.allocator, peer_id2));
+    }
+
+    // Test P2P pop and push
+    {
+        var ma = Multiaddr.init(testing.allocator);
+        defer ma.deinit();
+        const peer_id = try PeerId.fromString(testing.allocator, "QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N");
+        try ma.push(.{ .P2P = peer_id });
+        const str = try ma.toString(testing.allocator);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("/p2p/QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N", str);
+        const p = try ma.pop();
+        try testing.expectEqual(p.?, Protocol{ .P2P = peer_id });
+        const new_ma = try ma.withP2p(testing.allocator, peer_id);
+        defer new_ma.deinit();
+        try testing.expect(&ma != &new_ma);
     }
 }
