@@ -30,10 +30,17 @@ pub fn encode(comptime T: type, number: T, buffer: []u8) []u8 {
 pub fn decode(comptime T: type, buffer: []const u8) !struct { value: T, remaining: []const u8 } {
     var value: T = 0;
     var i: usize = 0;
-    const max_bytes_len = maxBytesForType(T);
+    var continuation_bytes: usize = 0;
 
     while (i < buffer.len) {
         const b = buffer[i];
+
+        if (!isLast(b)) {
+            continuation_bytes += 1;
+            if (continuation_bytes >= maxBytesForType(T)) {
+                return VarintParseError.Overflow;
+            }
+        }
 
         const k = @as(T, b & 0x7F);
         value |= k << @intCast(i * 7);
@@ -49,10 +56,8 @@ pub fn decode(comptime T: type, buffer: []const u8) !struct { value: T, remainin
         }
 
         i += 1;
-        if (i >= max_bytes_len) {
-            return VarintParseError.Overflow;
-        }
     }
+
     return VarintParseError.Insufficient;
 }
 
