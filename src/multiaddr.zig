@@ -30,6 +30,7 @@ const UNIX: u32 = 400;
 const P2P: u32 = 421;
 const ONION: u32 = 444;
 const ONION3: u32 = 445;
+const TLS: u32 = 448;
 const QUIC: u32 = 460;
 const WS: u32 = 477;
 const WSS: u32 = 478;
@@ -54,6 +55,7 @@ pub const Protocol = union(enum) {
     Ws,
     Wss,
     Sctp: u16,
+    Tls,
     Quic,
     QuicV1,
     P2pCircuit,
@@ -77,6 +79,7 @@ pub const Protocol = union(enum) {
             .Wss => "wss",
             .Unix => "unix",
             .Sctp => "sctp",
+            .Tls => "tls",
             .Quic => "quic",
             .QuicV1 => "quic-v1",
             .P2pCircuit => "p2p-circuit",
@@ -185,6 +188,7 @@ pub const Protocol = union(enum) {
             QUIC_V1 => return .{ .proto = .QuicV1, .rest = rest },
             P2P_CIRCUIT => return .{ .proto = .P2pCircuit, .rest = rest },
             WEBTRANSPORT => return .{ .proto = .WebTransport, .rest = rest },
+            TLS => return .{ .proto = .Tls, .rest = rest },
             P2P => {
                 const size_decoded = try uvarint.decode(usize, rest);
                 const size = size_decoded.value;
@@ -269,6 +273,9 @@ pub const Protocol = union(enum) {
                 var port_bytes: [2]u8 = undefined;
                 std.mem.writeInt(u16, &port_bytes, port, .big);
                 try writer.writeAll(&port_bytes);
+            },
+            .Tls => {
+                _ = try uvarint.encodeStream(writer, u32, TLS);
             },
             .Quic => {
                 _ = try uvarint.encodeStream(writer, u32, QUIC);
@@ -604,6 +611,7 @@ pub const Multiaddr = struct {
                 .Dnsaddr => |host| try result.writer().print("/dnsaddr/{s}", .{host}),
                 .Dccp => |port| try result.writer().print("/dccp/{}", .{port}),
                 .Sctp => |port| try result.writer().print("/sctp/{}", .{port}),
+                .Tls => try result.writer().print("/tls", .{}),
                 .Quic => try result.writer().print("/quic", .{}),
                 .QuicV1 => try result.writer().print("/quic-v1", .{}),
                 .P2pCircuit => try result.writer().print("/p2p-circuit", .{}),
@@ -641,7 +649,7 @@ pub const Multiaddr = struct {
     }
 
     fn parseProtocol(allocator: std.mem.Allocator, parts: *std.mem.SplitIterator(u8, .scalar), proto_name: []const u8) !Protocol {
-        return switch (std.meta.stringToEnum(enum { ip4, tcp, udp, dns, dns4, dns6, http, https, ws, wss, p2p, unix }, proto_name) orelse return Error.UnknownProtocolString) {
+        return switch (std.meta.stringToEnum(enum { ip4, tcp, udp, dns, dns4, dns6, http, https, ws, wss, p2p, unix, quic, @"quic-v1", tls }, proto_name) orelse return Error.UnknownProtocolString) {
             .ip4 => blk: {
                 const addr_str = parts.next() orelse return Error.InvalidProtocolString;
                 var addr: [4]u8 = undefined;
@@ -661,6 +669,9 @@ pub const Multiaddr = struct {
                 const peer_id = try PeerId.fromString(allocator, peer_id_str);
                 break :blk Protocol{ .P2P = peer_id };
             },
+            .quic => Protocol.Quic,
+            .@"quic-v1" => Protocol.QuicV1,
+            .tls => Protocol.Tls,
             // Add other protocol parsing as needed
             else => Error.UnknownProtocolString,
         };
@@ -755,6 +766,9 @@ test "multiaddr from string" {
         "/ip4/127.0.0.1",
         "/tcp/8080",
         "/ip4/198.51.100.0/tcp/4242/p2p/QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N",
+        "/tls",
+        "/quic",
+        "/quic-v1",
     };
 
     inline for (cases) |case| {
@@ -1149,7 +1163,17 @@ test "multiaddr protocol - dccp and sctp" {
     }
 }
 
-test "multiaddr protocol - quic variants" {
+test "multiaddr protocol - tls and quic variants" {
+    // Test TLS
+    {
+        var ma = Multiaddr.init(testing.allocator);
+        defer ma.deinit();
+        try ma.push(.Tls);
+        const str = try ma.toString(testing.allocator);
+        defer testing.allocator.free(str);
+        try testing.expectEqualStrings("/tls", str);
+    }
+
     // Test QUIC
     {
         var ma = Multiaddr.init(testing.allocator);
