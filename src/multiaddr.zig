@@ -664,6 +664,18 @@ pub const Multiaddr = struct {
                 else
                     Protocol{ .Udp = port };
             },
+            .dns => blk: {
+                const host = parts.next() orelse return Error.InvalidProtocolString;
+                break :blk Protocol{ .Dns = host };
+            },
+            .dns4 => blk: {
+                const host = parts.next() orelse return Error.InvalidProtocolString;
+                break :blk Protocol{ .Dns4 = host };
+            },
+            .dns6 => blk: {
+                const host = parts.next() orelse return Error.InvalidProtocolString;
+                break :blk Protocol{ .Dns6 = host };
+            },
             .p2p => blk: {
                 const peer_id_str = parts.next() orelse return Error.InvalidProtocolString;
                 const peer_id = try PeerId.fromString(allocator, peer_id_str);
@@ -766,6 +778,9 @@ test "multiaddr from string" {
         "/ip4/127.0.0.1",
         "/tcp/8080",
         "/ip4/198.51.100.0/tcp/4242/p2p/QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N",
+        "/dns/example.com",
+        "/dns4/example.com",
+        "/dns6/example.com",
         "/tls",
         "/quic",
         "/quic-v1",
