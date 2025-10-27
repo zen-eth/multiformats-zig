@@ -26,8 +26,8 @@
     // internet connectivity.
     .dependencies = .{
         .peer_id = .{
-            .url = "git+https://github.com/blockblaz/peer-id#be1809b968b900ca41884b3206a71f239dadce55",
-            .hash = "peer_id-0.0.0-IgmNDz9aAAB8_wN9c_KUTGWBmC0AblXbWsNKGFB1jvSU",
+            .url = "git+https://github.com/blockblaz/peer-id#dd0e0b09ac905d44f04ee1e3c5ae583ccf13a4e7",
+            .hash = "peer_id-0.0.0-IgmNDzZeAADRLqvw2KI_7-nt_wXRNWGLUD_S-e86DDQk",
         },
     },
     .paths = .{
