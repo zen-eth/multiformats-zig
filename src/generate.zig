@@ -20,8 +20,8 @@ pub fn main() !void {
     const csv_content = try fs.cwd().readFileAlloc(allocator, "src/spec/multicodec/table.csv", 1024 * 1024);
     defer allocator.free(csv_content);
 
-    var codecs = std.ArrayList(Codec).init(allocator);
-    defer codecs.deinit();
+    var codecs: std.ArrayList(Codec) = .{};
+    defer codecs.deinit(allocator);
 
     // Parse CSV
     var lines = std.mem.splitSequence(u8, csv_content, "\n");
@@ -39,7 +39,7 @@ pub fn main() !void {
 
         const code = try std.fmt.parseInt(i32, std.mem.trim(u8, code_str, " "), 0);
 
-        try codecs.append(.{
+        try codecs.append(allocator, .{
             .name = name,
             .tag = tag,
             .code = code,
@@ -83,12 +83,12 @@ pub fn main() !void {
         }
 
         // Convert to sorted array
-        var tag_keys = std.ArrayList([]const u8).init(allocator);
-        defer tag_keys.deinit();
+        var tag_keys: std.ArrayList([]const u8) = .{};
+        defer tag_keys.deinit(allocator);
 
         var tag_iter = tags.keyIterator();
         while (tag_iter.next()) |tag| {
-            try tag_keys.append(tag.*);
+            try tag_keys.append(allocator, tag.*);
         }
 
         // Sort tags alphabetically

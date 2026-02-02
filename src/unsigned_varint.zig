@@ -239,14 +239,14 @@ test "specific_values" {
 }
 
 test "stream_identity" {
-    var buf = std.ArrayList(u8).init(testing.allocator);
-    defer buf.deinit();
+    var buf: std.ArrayList(u8) = .{};
+    defer buf.deinit(testing.allocator);
 
     const numbers = [_]u64{ 1, 127, 128, 255, 300, 16384 };
 
     for (numbers) |n| {
         // Encode to stream
-        const written = try encodeStream(buf.writer(), u64, n);
+        const written = try encodeStream(buf.writer(testing.allocator), u64, n);
         try testing.expectEqual(written, encode(u64, n, buf.items[0..]).len);
 
         // Decode from stream

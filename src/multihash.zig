@@ -231,7 +231,37 @@ pub const MultihashCodecs = enum(u64) {
     BLAKE2S_256 = Multicodec.BLAKE2S_256.getCode(),
     BLAKE3 = Multicodec.BLAKE3.getCode(),
 
-    pub usingnamespace MultihashDigest(@This());
+    const DigestSize = struct {
+        fn getSize(comptime code: MultihashCodecs) comptime_int {
+            return switch (code) {
+                .SHA2_256 => 32,
+                .SHA2_512 => 64,
+                .SHA3_224 => 28,
+                .SHA3_256 => 32,
+                .SHA3_384 => 48,
+                .SHA3_512 => 64,
+                .KECCAK_224 => 28,
+                .KECCAK_256 => 32,
+                .KECCAK_384 => 48,
+                .KECCAK_512 => 64,
+                .BLAKE2B_256 => 32,
+                .BLAKE2B_512 => 64,
+                .BLAKE2S_128 => 16,
+                .BLAKE2S_256 => 32,
+                .BLAKE3 => 64,
+            };
+        }
+    };
+
+    /// digest creates a new Multihash from the given input.
+    pub fn digest(comptime code: MultihashCodecs, input: []const u8) !Multihash(DigestSize.getSize(code)) {
+        var hasher = Hasher.init(code);
+        try hasher.update(input);
+        const digest_bytes = switch (hasher) {
+            inline else => |*h| h.finalize()[0..],
+        };
+        return try Multihash(DigestSize.getSize(code)).wrap(try Multicodec.fromCode(@intFromEnum(code)), digest_bytes);
+    }
 };
 
 /// Sha2_256 is a struct that represents the SHA2-256 hash algorithm.
