@@ -4,19 +4,12 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const peerid_dep = b.dependency("peer_id", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    const peerid_module = peerid_dep.module("peer-id");
-
     // Create the module
     const root_module = b.addModule("multiformats-zig", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
-    root_module.addImport("peer-id", peerid_module);
 
     // Create the library
     const lib = b.addLibrary(.{
@@ -32,8 +25,6 @@ pub fn build(b: *std.Build) void {
     // Test setup
     const lib_unit_tests = b.addTest(.{
         .root_module = root_module,
-        .target = target,
-        .optimize = optimize,
     });
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
@@ -49,11 +40,15 @@ fn setupBenchmarks(b: *std.Build, target: std.Build.ResolvedTarget, optimize: st
     const method_option = b.option([]const u8, "method", "method of Base action") orelse "encode";
     const code_option = b.option([]const u8, "code", "code of the Base type") orelse "";
 
-    const benchmark = b.addExecutable(.{
-        .name = bench_name,
-        .root_source_file = .{ .src_path = .{ .owner = b, .sub_path = b.fmt("src/{s}.zig", .{bench_name}) } },
+    const bench_module = b.createModule(.{
+        .root_source_file = b.path(b.fmt("src/{s}.zig", .{bench_name})),
         .target = target,
         .optimize = optimize,
+    });
+
+    const benchmark = b.addExecutable(.{
+        .name = bench_name,
+        .root_module = bench_module,
     });
     const run_benchmark = b.addRunArtifact(benchmark);
     run_benchmark.addArgs(&.{ "--period", period_option });
