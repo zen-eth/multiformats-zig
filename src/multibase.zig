@@ -338,7 +338,7 @@ pub const MultiBaseCodec = enum {
             for (source) |byte| {
                 const broadcast: @Vector(8, u8) = @splat(byte);
                 const bits: @Vector(8, u8) = zero_char_vec + @intFromBool((broadcast & mask) != zero_vec);
-                @memcpy(dest[out_idx..][0..8], std.mem.asBytes(&bits));
+                dest[out_idx..][0..8].* = bits;
                 out_idx += 8;
             }
             return dest[0..out_idx];

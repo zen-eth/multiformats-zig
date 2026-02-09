@@ -157,10 +157,12 @@ pub fn MultihashDigest(comptime T: type) type {
         pub fn digest(comptime code: T, input: []const u8) !Multihash(DigestSize.getSize(code)) {
             var hasher = Hasher.init(code);
             try hasher.update(input);
-            const digest_bytes = switch (hasher) {
-                inline else => |*h| h.finalize()[0..],
+            return switch (hasher) {
+                inline else => |*h| blk: {
+                    const digest_bytes = h.finalize();
+                    break :blk try Multihash(DigestSize.getSize(code)).wrap(try Multicodec.fromCode(@intFromEnum(code)), &digest_bytes);
+                },
             };
-            return try Multihash(DigestSize.getSize(code)).wrap(try Multicodec.fromCode(@intFromEnum(code)), digest_bytes);
         }
     };
 }
@@ -257,10 +259,12 @@ pub const MultihashCodecs = enum(u64) {
     pub fn digest(comptime code: MultihashCodecs, input: []const u8) !Multihash(DigestSize.getSize(code)) {
         var hasher = Hasher.init(code);
         try hasher.update(input);
-        const digest_bytes = switch (hasher) {
-            inline else => |*h| h.finalize()[0..],
+        return switch (hasher) {
+            inline else => |*h| blk: {
+                const digest_bytes = h.finalize();
+                break :blk try Multihash(DigestSize.getSize(code)).wrap(try Multicodec.fromCode(@intFromEnum(code)), &digest_bytes);
+            },
         };
-        return try Multihash(DigestSize.getSize(code)).wrap(try Multicodec.fromCode(@intFromEnum(code)), digest_bytes);
     }
 };
 
