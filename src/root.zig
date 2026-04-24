@@ -5,5 +5,5 @@ pub const multibase = @import("multibase.zig");
 pub const cid = @import("cid.zig");
 
 test {
-    @import("std").testing.refAllDeclsRecursive(@This());
+    @import("std").testing.refAllDecls(@This());
 }

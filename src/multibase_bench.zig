@@ -80,24 +80,28 @@ fn call_decode(codec: multibase.MultiBaseCodec, dest: []u8, data: []const u8) vo
 
 const bench_data_path = "./test/data/bench_data";
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
     const allocator = std.heap.page_allocator;
-    const bench_data = try loadBenchData(allocator, bench_data_path);
-    const config = try parse_args();
-    var bench_res = try run_bench(bench_data, config);
-    try bench_res.format(std.io.getStdOut().writer());
+    const io = init.io;
+
+    const bench_data = try loadBenchData(io, allocator, bench_data_path);
+    const config = try parse_args(init);
+    var bench_res = try run_bench(io, bench_data, config);
+
+    var stdout_buf: [4096]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buf);
+    try bench_res.format(&stdout_writer.interface);
+    try stdout_writer.interface.flush();
 }
 
-fn parse_args() !BenchConfig {
+fn parse_args(init: std.process.Init) !BenchConfig {
     var period: u64 = 10;
     var times: u64 = 1_000_000;
     var code: ?multibase.MultiBaseCodec = null;
     var method: []const u8 = "encode";
 
-    var arena_state = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena_state.deinit();
-    const arena = arena_state.allocator();
-    const args = try std.process.argsAlloc(arena);
+    const arena = init.arena.allocator();
+    const args = try init.minimal.args.toSlice(arena);
 
     var i: usize = 1;
     while (i < args.len) : (i += 1) {
@@ -165,7 +169,7 @@ fn handle_method(value: []const u8) ![]const u8 {
     }
 }
 
-fn run_bench(bench_data: []const u8, config: BenchConfig) !BenchResult {
+fn run_bench(io: std.Io, bench_data: []const u8, config: BenchConfig) !BenchResult {
     var dest_len = config.code.encodedLen(bench_data);
     var action = Func{
         .fn_ptr = call_encode,
@@ -189,13 +193,13 @@ fn run_bench(bench_data: []const u8, config: BenchConfig) !BenchResult {
     var time_records = try std.heap.page_allocator.alloc(i128, config.period);
     defer std.heap.page_allocator.free(time_records);
     while (i < config.period) : (i += 1) {
-        const start_time = std.time.nanoTimestamp();
+        const start_time = std.Io.Clock.awake.now(io).toNanoseconds();
         for (0..config.times) |_| {
             action.call(dest, data);
             // _ = config.code.encode(dest, bench_data);
         }
-        const end_time = std.time.nanoTimestamp();
-        const elapsed_time = end_time - start_time;
+        const end_time = std.Io.Clock.awake.now(io).toNanoseconds();
+        const elapsed_time: i128 = end_time - start_time;
         time_records[i] = elapsed_time;
         if (elapsed_time > max_time) {
             max_time = elapsed_time;
@@ -222,12 +226,12 @@ fn run_bench(bench_data: []const u8, config: BenchConfig) !BenchResult {
     };
 }
 
-fn loadBenchData(allocator: std.mem.Allocator, filePath: []const u8) ![]const u8 {
-    var file = try std.fs.cwd().openFile(filePath, .{ .mode = std.fs.File.OpenMode.read_only });
-    defer file.close();
-    const fileSize = try file.getEndPos();
+fn loadBenchData(io: std.Io, allocator: std.mem.Allocator, filePath: []const u8) ![]const u8 {
+    var file = try std.Io.Dir.cwd().openFile(io, filePath, .{ .mode = .read_only });
+    defer file.close(io);
+    const fileSize = try file.length(io);
     const buffer = try allocator.alloc(u8, fileSize);
-    _ = try file.readAll(buffer);
-    const content: []const u8 = buffer;
-    return content;
+    var file_reader = file.reader(io, &.{});
+    try file_reader.interface.readSliceAll(buffer);
+    return buffer;
 }

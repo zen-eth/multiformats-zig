@@ -155,7 +155,7 @@ pub fn CID(comptime S: usize) type {
 
             if (version == 0x12 and codec == 0x20) {
                 var digest: [32]u8 = undefined;
-                try reader.readNoEof(&digest);
+                try reader.readSliceAll(&digest);
                 const version_codec = try Multicodec.fromCode(version);
                 const mh = try Multihash(S).wrap(version_codec, &digest);
                 return newV0(mh);
@@ -217,9 +217,9 @@ pub fn CID(comptime S: usize) type {
 
         /// Converts the CID to a byte slice.
         pub fn toBytes(self: *const Self, dest: []u8) ![]u8 {
-            var stream = std.io.fixedBufferStream(dest);
+            var w = std.Io.Writer.fixed(dest);
 
-            const written = try self.writeStream(stream.writer());
+            const written = try self.writeStream(&w);
             return dest[0..written];
         }
 
@@ -263,8 +263,8 @@ pub fn CID(comptime S: usize) type {
         }
 
         pub fn fromBytes(bytes: []const u8) !Self {
-            var fbs = std.io.fixedBufferStream(bytes);
-            return try Self.readStream(fbs.reader());
+            var r = std.Io.Reader.fixed(bytes);
+            return try Self.readStream(&r);
         }
 
         pub fn fromString(codec: MultiBaseCodec, dest: []u8, cid_str: []const u8) !Self {
@@ -365,8 +365,8 @@ test CID {
         const bytes = try original.toBytes(buffer);
         defer allocator.free(buffer);
 
-        var fbs = std.io.fixedBufferStream(bytes);
-        const decoded = try CID(32).readStream(fbs.reader());
+        var r = std.Io.Reader.fixed(bytes);
+        const decoded = try CID(32).readStream(&r);
 
         try testing.expect(original.isEqual(&decoded));
     }
