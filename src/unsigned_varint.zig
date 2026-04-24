@@ -96,7 +96,7 @@ pub fn decodeStream(reader: anytype, comptime T: type) !T {
     var continuation_bytes: usize = 0;
 
     while (true) {
-        const byte = try reader.readByte();
+        const byte = try reader.takeByte();
 
         if (!isLast(byte)) {
             continuation_bytes += 1;
@@ -239,21 +239,21 @@ test "specific_values" {
 }
 
 test "stream_identity" {
-    var buf: std.ArrayList(u8) = .{};
-    defer buf.deinit(testing.allocator);
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer aw.deinit();
 
     const numbers = [_]u64{ 1, 127, 128, 255, 300, 16384 };
 
     for (numbers) |n| {
         // Encode to stream
-        const written = try encodeStream(buf.writer(testing.allocator), u64, n);
-        try testing.expectEqual(written, encode(u64, n, buf.items[0..]).len);
+        const written = try encodeStream(&aw.writer, u64, n);
+        try testing.expectEqual(written, aw.written().len);
 
         // Decode from stream
-        var stream = std.io.fixedBufferStream(buf.items);
-        const decoded = try decodeStream(stream.reader(), u64);
+        var r = std.Io.Reader.fixed(aw.written());
+        const decoded = try decodeStream(&r, u64);
 
         try testing.expectEqual(n, decoded);
-        buf.clearRetainingCapacity();
+        aw.clearRetainingCapacity();
     }
 }

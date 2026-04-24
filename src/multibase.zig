@@ -2608,11 +2608,12 @@ test "Base58Flickr decode large data" {
 }
 
 fn loadTestData(allocator: std.mem.Allocator, filePath: []const u8) ![]const u8 {
-    var file = try std.fs.cwd().openFile(filePath, .{ .mode = std.fs.File.OpenMode.read_only });
-    defer file.close();
-    const fileSize = try file.getEndPos();
+    const io = std.testing.io;
+    var file = try std.Io.Dir.cwd().openFile(io, filePath, .{ .mode = .read_only });
+    defer file.close(io);
+    const fileSize = try file.length(io);
     const buffer = try allocator.alloc(u8, fileSize);
-    _ = try file.readAll(buffer);
-    const content: []const u8 = buffer;
-    return content;
+    var file_reader = file.reader(io, &.{});
+    try file_reader.interface.readSliceAll(buffer);
+    return buffer;
 }

@@ -96,8 +96,8 @@ pub fn Multihash(comptime S: usize) type {
 
         /// readBytes reads a Multihash from a byte slice.
         pub fn readBytes(bytes: []const u8) !Self {
-            var stream = std.io.fixedBufferStream(bytes);
-            return try Self.read(stream.reader());
+            var r = std.Io.Reader.fixed(bytes);
+            return try Self.read(&r);
         }
 
         /// read reads a Multihash from a reader.
@@ -110,7 +110,7 @@ pub fn Multihash(comptime S: usize) type {
             }
 
             var digest = [_]u8{0} ** S;
-            try reader.readNoEof(digest[0..size]);
+            try reader.readSliceAll(digest[0..size]);
 
             return Self{
                 .code = try Multicodec.fromCode(code),
@@ -121,8 +121,8 @@ pub fn Multihash(comptime S: usize) type {
 
         /// toBytes converts the Multihash to a byte slice.
         pub fn toBytes(self: *const Self, dest: []u8) ![]const u8 {
-            var stream = std.io.fixedBufferStream(dest);
-            const written = try self.write(stream.writer());
+            var w = std.Io.Writer.fixed(dest);
+            const written = try self.write(&w);
             return dest[0..written];
         }
     };
@@ -640,16 +640,16 @@ test "multihash serialization" {
     var mh = try Multihash(32).wrap(Multicodec.SHA2_256, &[_]u8{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 });
 
     var buf: [100]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
-    const written = try mh.write(fbs.writer());
+    var w = std.Io.Writer.fixed(&buf);
+    const written = try mh.write(&w);
     try testing.expectEqual(written, expected_bytes.len);
     try testing.expectEqualSlices(u8, buf[0..written], &expected_bytes);
 }
 
 test "multihash deserialization" {
     const input = [_]u8{ 0x12, 0x0a, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
-    var fbs = std.io.fixedBufferStream(&input);
-    var mh = try Multihash(32).read(fbs.reader());
+    var r = std.Io.Reader.fixed(&input);
+    var mh = try Multihash(32).read(&r);
 
     try testing.expectEqual(mh.getCode().getCode(), 0x12);
     try testing.expectEqual(mh.getSize(), 10);
